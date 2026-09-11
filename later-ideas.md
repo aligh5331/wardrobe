@@ -60,3 +60,45 @@ be right or wrong.
   `06-decisions.md`
 - General subcategory accuracy — already flagged as "weaker than category
   accuracy" in `05-vlm-tagging-spec.md`'s known limitations section
+
+## Multi-user / multi-tenant support
+
+### Direction
+"Other people may use it" currently means self-hosting: each person
+runs their own instance (own binary, own SQLite file, own VLM endpoint),
+identical to Ali's setup. A real multi-tenant deployment — one shared
+server, multiple user accounts, one DB instance serving many people
+simultaneously — is a distinct, larger direction flagged as good but
+not current scope.
+
+### What it would actually change (not a small add-on)
+- **Schema:** every table (`04-data-schema.md`'s wardrobe item and
+  anything added later) would need a `user_id` / tenant column, plus
+  whatever indexes/constraints follow from that.
+- **Auth:** currently none — single local user, no login. Multi-tenant
+  needs real auth (sessions, accounts, password/OAuth, something), which
+  is a meaningfully different security surface than "trusted localhost
+  app."
+- **Runtime model:** `07-architecture.md`'s single-embedded-binary,
+  single-SQLite-file, localhost-only model would need rethinking —
+  concurrent access from multiple real users, probably a real deployment
+  target instead of "open a browser tab on your own machine."
+- **VLM/LLM connectivity:** `VLM_URL`/`LLM_URL` are currently one
+  endpoint per install. Multi-tenant either means every user configures
+  their own model endpoint (more UI/config surface) or a shared
+  inference backend serving multiple users' tagging requests (capacity
+  planning, queueing, isolation between users' data mid-request).
+- **Hard constraints stay:** "fully local" and "no fine-tuning" don't
+  change in spirit — this is about who's *running* an instance and how
+  many accounts one instance serves, not about routing inference to the
+  cloud. A multi-tenant instance is still one person's (or one
+  household's, or one self-hoster's) own infrastructure serving multiple
+  accounts on it, not a hosted SaaS.
+
+### Explicitly out of scope for now
+- Not a Phase 1 concern at all — Phase 1 finishes as single-user,
+  self-hosted, exactly as currently speced.
+- Not a small schema patch — this is closer to "a second product mode"
+  than an incremental feature, and deserves its own spec pass (probably
+  its own `0X-multi-tenancy.md`) if/when it's picked up, not a quiet
+  retrofit onto the Phase 1 schema.
