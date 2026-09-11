@@ -1,0 +1,30 @@
+# --- Runtime data (personal, never committed) ---
+data/
+logs/
+temp/
+
+# --- Secrets / local config ---
+.env
+.env.*
+!.env.example
+
+# --- Go ---
+/wardrobe
+/server
+*.exe
+*.test
+*.out
+vendor/
+
+# --- Frontend (Vite/React) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.local
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
