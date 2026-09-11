@@ -44,19 +44,19 @@ wardrobe/
 ├── 06-decisions.md
 ├── 07-architecture.md
 │
-├── agents/                      # canonical role definitions (source of truth)
+├── agents/                      # canonical role definitions — kept identical
+│   │				 # to .opencode/agents/ by hand; not auto-generated
 │   ├── planner.md
 │   ├── coder.md
 │   ├── tester.md
 │   └── reviewer.md
 │
 ├── .opencode/
-│   └── agents/                  # wrapped copies opencode actually loads
-│       ├── planner.md           # (YAML frontmatter + permissions block),
-│       ├── coder.md             # generated from agents/*.md — tracked in
-│       ├── tester.md            # git, not gitignored, since the permission
-│       └── reviewer.md          # blocks are security-relevant and worth
-│                                 # diffing in history
+│   └── agents/                  # what opencode actually loads — same content
+│       ├── planner.md           # as agents/*.md, tracked separately since
+│       ├── coder.md             # this is the enforced copy and the
+│       ├── tester.md            # this is the enforced copy and the
+│       └── reviewer.md          # in history in their own right
 │
 ├── backlog/                     # one file per ticket, board state via
 │   └── <TICKET-ID>.md           # a `**Status:**` line (02-agile-process.md)

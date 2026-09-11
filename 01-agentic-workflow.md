@@ -22,10 +22,7 @@ definition of done.
 | Tester | `agents/tester.md` | Writes/runs tests against a ticket's acceptance criteria; verifies it's actually done |
 | Reviewer | `agents/reviewer.md` | Reviews a ticket's diff against the spec and project standards; approves or sends back |
 
-*(Only `agents/tester.md` exists so far — see the generation prompt at the
-end of this doc set to create the rest.)*
-
-## Flow for one ticket
+Flow for one ticket
 1. Planner turns an approved spec (or a piece of one) into a ticket in the backlog (`02-agile-process.md`)
 2. Coder implements it
 3. Tester verifies it against the ticket's acceptance criteria
