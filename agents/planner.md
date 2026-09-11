@@ -6,6 +6,7 @@ color: info
 steps: 10
 permission:
   "*": ask
+  skill: allow
   read: allow
   glob: allow
   grep: allow

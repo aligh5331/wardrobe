@@ -6,6 +6,7 @@ color: primary
 steps: 25
 permission:
   "*": ask
+  skill: allow
   read:
     "*": allow
     "**/.env*": ask

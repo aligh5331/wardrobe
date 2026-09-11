@@ -6,6 +6,7 @@ color: warning
 steps: 15
 permission:
   "*": ask
+  skill: allow
   read: allow
   glob: allow
   grep: allow
