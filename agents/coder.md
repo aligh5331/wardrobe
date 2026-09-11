@@ -12,8 +12,6 @@ permission:
   read:
     "*": allow
     "**/.env*": ask
-    ".agents/*": allow
-    ".opencode/*" allow
   glob: allow
   grep: allow
   edit:
@@ -38,6 +36,7 @@ permission:
     "git branch -D*": deny
     "rm -rf*": deny
     "sudo*": deny
+  task: deny
 ---
 
 # Agent: Coder
