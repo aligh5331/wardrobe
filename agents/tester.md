@@ -7,6 +7,8 @@ steps: 15
 permission:
   "*": ask
   skill: allow
+  context7_resolve-library-id: allow
+  context7_query-docs: allow
   read: allow
   glob: allow
   grep: allow
@@ -82,3 +84,9 @@ specific reproducible failure attached.
   intermediate output), ask first. If approved, use
   `<project root>/temp/` — never the OS `/tmp` directory or any path
   outside the project root (see `06-decisions.md`).
+- Before writing or editing any code, check the list of available
+  skills for one relevant to the language, framework, or library
+  involved in the current task, and use it if one exists. Do this on
+  every task, not just when a skill is explicitly requested — do not
+  rely on noticing a match from the skill's description alone; make
+  the check itself a required step, separate from judging relevance.

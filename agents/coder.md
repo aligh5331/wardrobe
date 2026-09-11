@@ -7,9 +7,13 @@ steps: 25
 permission:
   "*": ask
   skill: allow
+  context7_resolve-library-id: allow
+  context7_query-docs: allow
   read:
     "*": allow
     "**/.env*": ask
+    ".agents/*": allow
+    ".opencode/*" allow
   glob: allow
   grep: allow
   edit:
@@ -34,7 +38,6 @@ permission:
     "git branch -D*": deny
     "rm -rf*": deny
     "sudo*": deny
-  task: deny
 ---
 
 # Agent: Coder
@@ -101,3 +104,9 @@ against it.
   `<project root>/temp/` — never the OS `/tmp` directory or any path
   outside the project root. This is enforced by this agent's permission
   block, not just a preference (see `06-decisions.md`).
+- Before writing or editing any code, check the list of available
+  skills for one relevant to the language, framework, or library
+  involved in the current task, and use it if one exists. Do this on
+  every task, not just when a skill is explicitly requested — do not
+  rely on noticing a match from the skill's description alone; make
+  the check itself a required step, separate from judging relevance.
