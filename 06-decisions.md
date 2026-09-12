@@ -1,6 +1,28 @@
 # Decisions
 
 Newest first. Each entry: decision, date-ish context, why.
+## Distribution model: self-hosted single-user, not multi-tenant
+"Fully local" means each install runs entirely on infrastructure its
+owner controls — not that the project is single-person-only. Other
+people may run their own instance (own binary, own SQLite file, own VLM
+endpoint) exactly as Ali does. This changes nothing about the current
+architecture: one binary, one SQLite file per install, no auth, no
+`user_id` on any table — that model was already implicitly
+"distributable," it just hadn't been stated as intent. A real
+multi-tenant deployment (shared server, multiple accounts, auth, one
+DB serving many users) is a distinct future direction — see
+`later-ideas.md` — and is explicitly not what "other people may use it"
+means today.
+
+## Weather signal is an acknowledged exception to "fully local"
+The fully-local hard constraint (`00-overview.md`) governs inference and
+storage — no cloud AI, no hosted model APIs, no data leaving the user's
+own hardware for tagging or cataloging. Weather forecast data has no
+local source by nature, so Layer 2 (`00-overview.md` Vision) will call
+an external weather API when it's built. This is a scoped, single
+exception, not a loosening of the constraint elsewhere — VLM inference,
+the LLM recommender, and the catalog store stay fully local regardless
+of distribution model.
 
 ## `LLM_URL`/`LLM_API_KEY` provisioned ahead of use
 Phase 1 ingestion only calls `VLM_URL` (image tagging). `LLM_URL`/
