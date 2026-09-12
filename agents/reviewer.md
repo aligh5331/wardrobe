@@ -20,6 +20,7 @@ permission:
     "temp/**": deny
     "/tmp/**": deny
     "/var/tmp/**": deny
+    "AGENTS.md": deny
   external_directory: deny
   bash:
     "git diff*": allow

@@ -22,6 +22,7 @@ permission:
     "temp/**": ask
     "/tmp/**": deny
     "/var/tmp/**": deny
+    "AGENTS.md": deny
   external_directory: deny
   bash:
     "git status": allow
