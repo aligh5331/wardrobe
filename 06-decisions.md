@@ -2,6 +2,40 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Malformed VLM output: retry once at nonzero temperature, then flag
+`05-vlm-tagging-spec.md` originally left "reject and retry" vs. "flag
+for manual review" as an either/or, unresolved. Settled as: retry
+exactly once, then flag if the retry also fails.
+
+VLM sampling temperature is set to a nonzero default (`VLM_TEMPERATURE`,
+default `0.4` — `06-decisions.md`'s usual "reasonable default, tune
+later with evidence" pattern, not a firm number) specifically so the
+retry is a genuinely independent second sample of the model, not a
+near-deterministic repeat of the first answer. A retry at temperature
+0 would mostly just reproduce the same output, defeating the point.
+
+Rejected: no retry (too much manual-review noise for what's often a
+one-off glitch) and retry N>1 times (added complexity and GPU load
+with no evidence yet that more than one retry helps — see below).
+
+Every attempt is logged in full (raw response, parsed JSON if any,
+specific failure type and detail) to `logs/vlm-attempts.jsonl`, keyed
+by a shared `item_id` per photo so attempt 1 and attempt 2 can be
+joined. This was deliberately structured to double as input for the
+VLM calibration idea parked in `later-ideas.md` — comparing two
+independent samples of the same photo is exactly that idea's
+"wrong vs. inconsistent" signal, now collected automatically during
+real use instead of needing a separate offline harness. If real
+flagged-log data later shows retries rarely change the outcome, or
+shows a second retry would help, that's the evidence to revisit this
+policy — not a reason to guess further now.
+
+VLM-unreachable errors (ING-002) are explicitly excluded from this
+policy — a connectivity failure is not a malformed-output case and
+should surface immediately rather than being retried into a flag.
+
+See `backlog/ING-005.md`, `backlog/ING-006.md`, `backlog/ING-007.md`.
+
 ## Bash permission checks are per-sub-command, not per-raw-string
 Investigated after observing that chained bash commands (e.g. `echo
 "x" && go vet ./... && go test ./...`) consistently triggered an "ask"
