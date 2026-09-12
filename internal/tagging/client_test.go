@@ -1,0 +1,221 @@
+package tagging
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+const testImage = "not really an image"
+
+const cannedResponse = `{"choices":[{"message":{"role":"assistant","content":"{\"category\":\"top\"}"}}]}`
+
+func writeTestImage(t *testing.T) string {
+	t.Helper()
+	path := t.TempDir() + "/photo.jpg"
+	if err := os.WriteFile(path, []byte(testImage), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestTag(t *testing.T) {
+	var (
+		gotMethod, gotPath, gotAuth, gotContentType string
+		gotBody                                     map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotContentType = r.Header.Get("Content-Type")
+		gotBody = map[string]any{}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("request body not valid JSON: %v", err)
+		}
+		w.Write([]byte(cannedResponse))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "")
+	msg, err := c.Tag(context.Background(), writeTestImage(t))
+	if err != nil {
+		t.Fatalf("Tag() error = %v", err)
+	}
+
+	// The client must send to the OpenAI-compatible chat endpoint.
+	if gotMethod != http.MethodPost || gotPath != "/v1/chat/completions" {
+		t.Errorf("request = %s %s, want POST /v1/chat/completions", gotMethod, gotPath)
+	}
+	if gotContentType != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", gotContentType)
+	}
+	// No API key configured: no Authorization header.
+	if gotAuth != "" {
+		t.Errorf("Authorization = %q, want none when apiKey empty", gotAuth)
+	}
+
+	// The spec's tagging prompt must be sent verbatim as the system message.
+	messages, ok := gotBody["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages = %v, want system + user", gotBody["messages"])
+	}
+	system, ok := messages[0].(map[string]any)
+	if !ok || system["role"] != "system" || system["content"] != taggingPrompt {
+		t.Errorf("system message = %v, want the spec taggingPrompt verbatim", messages[0])
+	}
+
+	// The user message must carry the photo as a base64 data URI.
+	user, ok := messages[1].(map[string]any)
+	if !ok || user["role"] != "user" {
+		t.Fatalf("user message = %v, want role user", messages[1])
+	}
+	parts, ok := user["content"].([]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("user content parts = %v, want image_url + text", user["content"])
+	}
+	wantURI := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString([]byte(testImage))
+	part0, _ := parts[0].(map[string]any)
+	imgURL, _ := part0["image_url"].(map[string]any)
+	if part0["type"] != "image_url" || imgURL["url"] != wantURI {
+		t.Errorf("image part = %v, want image_url with data URI %q", parts[0], wantURI)
+	}
+
+	// The raw model text is returned untouched.
+	if msg != `{"category":"top"}` {
+		t.Errorf("Tag() = %q, want the canned raw content", msg)
+	}
+}
+
+func TestTag_SendsAuthHeaderWhenKeySet(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(cannedResponse))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "secret-token")
+	if _, err := c.Tag(context.Background(), writeTestImage(t)); err != nil {
+		t.Fatalf("Tag() error = %v", err)
+	}
+	if gotAuth != "Bearer secret-token" {
+		t.Errorf("Authorization = %q, want Bearer secret-token", gotAuth)
+	}
+}
+
+func TestTag_EmptyContentReturnedAsIs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[{"message":{"content":""}}]}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "")
+	msg, err := c.Tag(context.Background(), writeTestImage(t))
+	if err != nil {
+		t.Fatalf("Tag() error = %v", err)
+	}
+	if msg != "" {
+		t.Errorf("Tag() = %q, want empty raw content", msg)
+	}
+}
+
+func TestTag_Unreachable(t *testing.T) {
+	// A server that is closed again: connections are refused, which is a
+	// distinct failure mode from a reachable model returning bad output.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv.Close()
+
+	c := NewClient(srv.URL, "")
+	_, err := c.Tag(context.Background(), writeTestImage(t))
+	if err == nil {
+		t.Fatal("Tag() error = nil, want ErrVLMUnreachable")
+	}
+	if !errors.Is(err, ErrVLMUnreachable) {
+		t.Errorf("errors.Is(err, ErrVLMUnreachable) = false, err = %v", err)
+	}
+}
+
+func TestTag_Non2xxIsNotUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal model error", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "")
+	_, err := c.Tag(context.Background(), writeTestImage(t))
+	if err == nil {
+		t.Fatal("Tag() error = nil, want status error")
+	}
+	if errors.Is(err, ErrVLMUnreachable) {
+		t.Errorf("non-2xx response must not be ErrVLMUnreachable, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("error = %q, want it to name the status", err)
+	}
+}
+
+func TestTag_MalformedEnvelopeIsNotUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[]}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "")
+	_, err := c.Tag(context.Background(), writeTestImage(t))
+	if err == nil {
+		t.Fatal("Tag() error = nil, want envelope error")
+	}
+	if errors.Is(err, ErrVLMUnreachable) {
+		t.Errorf("malformed model output must not be ErrVLMUnreachable, got %v", err)
+	}
+}
+
+func TestTag_Concurrent(t *testing.T) {
+	// An overlapping-request detector: if the client had a serialization
+	// queue, the handler would never see more than one request in flight.
+	var cur, max atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := cur.Add(1)
+		defer cur.Add(-1)
+		for {
+			m := max.Load()
+			if n <= m || max.CompareAndSwap(m, n) {
+				break
+			}
+		}
+		time.Sleep(30 * time.Millisecond)
+		w.Write([]byte(cannedResponse))
+	}))
+	defer srv.Close()
+
+	const n = 10
+	c := NewClient(srv.URL, "")
+	img := writeTestImage(t)
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for range n {
+		wg.Go(func() {
+			if _, err := c.Tag(context.Background(), img); err != nil {
+				errs <- err
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent Tag() error = %v", err)
+	}
+	if got := max.Load(); got <= 1 {
+		t.Errorf("max concurrent requests = %d, want > 1 (requests must not be serialized)", got)
+	}
+}
