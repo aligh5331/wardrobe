@@ -17,6 +17,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 // ErrVLMUnreachable marks failures to reach the VLM at all — connection
@@ -59,23 +61,72 @@ a single solid color with no visible stripe/plaid/print structure, use
 "solid" rather than omitting the field.`
 
 // Client sends tagging requests to one llama.cpp VLM via its
-// OpenAI-compatible /v1/chat/completions endpoint. It is safe for
-// concurrent use: there is deliberately no request queue or lock here,
-// matching the default concurrent VLM request behavior
-// (07-architecture.md).
+// OpenAI-compatible /v1/chat/completions endpoint. By default it is safe
+// for concurrent use with no request queue or lock (07-architecture.md
+// "VLM request behavior", default). WithSerialization opts into a global
+// one-at-a-time queue as a workaround for VLMs with known parallel-request
+// bugs.
 type Client struct {
 	baseURL string
 	apiKey  string
 	http    *http.Client
+
+	// serialize forces VLM calls through a single one-at-a-time queue
+	// (mu). Default false: requests run concurrently.
+	serialize bool
+	// mu is the serialization queue; only locked when serialize is true.
+	mu sync.Mutex
+	// delay is the wait after each response before the next queued
+	// request is sent. Only used when serialize is true.
+	delay time.Duration
+}
+
+// Option configures a Client at construction time.
+type Option func(*Client)
+
+// WithSerialization enables the opt-in global one-at-a-time request
+// queue: no two VLM requests are in flight simultaneously. delayMS is
+// the post-response wait before the next queued request is sent (0 or
+// negative means no added delay). This is the VLM_SERIALIZE_REQUESTS /
+// VLM_REQUEST_DELAY_MS workaround from 07-architecture.md; without this
+// option the client keeps the default concurrent behavior.
+func WithSerialization(delayMS int) Option {
+	return func(c *Client) {
+		c.serialize = true
+		if delayMS > 0 {
+			c.delay = time.Duration(delayMS) * time.Millisecond
+		}
+	}
 }
 
 // NewClient returns a Client for the VLM at vlmURL. apiKey may be empty;
-// when empty, no Authorization header is sent on requests.
-func NewClient(vlmURL, apiKey string) *Client {
-	return &Client{
+// when empty, no Authorization header is sent on requests. Optional
+// options (e.g. WithSerialization) tune request handling.
+func NewClient(vlmURL, apiKey string, opts ...Option) *Client {
+	c := &Client{
 		baseURL: strings.TrimRight(vlmURL, "/"),
 		apiKey:  apiKey,
 		http:    http.DefaultClient,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
+}
+
+// acquire takes the serialization queue when enabled. It returns a
+// release function that, when serialize is on, holds the queue through
+// the post-response delay before allowing the next request.
+func (c *Client) acquire() func() {
+	if !c.serialize {
+		return func() {}
+	}
+	c.mu.Lock()
+	return func() {
+		if c.delay > 0 {
+			time.Sleep(c.delay)
+		}
+		c.mu.Unlock()
 	}
 }
 
@@ -88,6 +139,11 @@ func NewClient(vlmURL, apiKey string) *Client {
 // other error is a VLM-side failure — non-2xx status or an unusable
 // response envelope — and must not be conflated with unreachable.
 func (c *Client) Tag(ctx context.Context, imagePath string) (string, error) {
+	// No-op unless serialization is enabled; when enabled it makes the
+	// whole request (and the post-response delay) one-at-a-time.
+	release := c.acquire()
+	defer release()
+
 	image, err := os.ReadFile(imagePath)
 	if err != nil {
 		return "", fmt.Errorf("read image %s: %w", imagePath, err)

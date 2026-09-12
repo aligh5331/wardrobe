@@ -219,3 +219,76 @@ func TestTag_Concurrent(t *testing.T) {
 		t.Errorf("max concurrent requests = %d, want > 1 (requests must not be serialized)", got)
 	}
 }
+
+func TestTag_Serialized(t *testing.T) {
+	// With serialization on, the overlap detector must never see more
+	// than one request in flight.
+	var cur, max atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := cur.Add(1)
+		defer cur.Add(-1)
+		for {
+			m := max.Load()
+			if n <= m || max.CompareAndSwap(m, n) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		w.Write([]byte(cannedResponse))
+	}))
+	defer srv.Close()
+
+	const n = 8
+	c := NewClient(srv.URL, "", WithSerialization(0))
+	img := writeTestImage(t)
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for range n {
+		wg.Go(func() {
+			if _, err := c.Tag(context.Background(), img); err != nil {
+				errs <- err
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("serialized Tag() error = %v", err)
+	}
+	if got := max.Load(); got != 1 {
+		t.Errorf("max concurrent requests = %d, want exactly 1 under serialization", got)
+	}
+}
+
+func TestTag_SerializedDelayBetweenRequests(t *testing.T) {
+	var mu sync.Mutex
+	var starts []time.Time
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		starts = append(starts, time.Now())
+		mu.Unlock()
+		w.Write([]byte(cannedResponse))
+	}))
+	defer srv.Close()
+
+	const delay = 40 * time.Millisecond
+	const n = 3
+	c := NewClient(srv.URL, "", WithSerialization(int(delay/time.Millisecond)))
+	img := writeTestImage(t)
+	for range n {
+		if _, err := c.Tag(context.Background(), img); err != nil {
+			t.Fatalf("Tag() error = %v", err)
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(starts) != n {
+		t.Fatalf("requests = %d, want %d", len(starts), n)
+	}
+	for i := 1; i < len(starts); i++ {
+		if gap := starts[i].Sub(starts[i-1]); gap < delay {
+			t.Errorf("gap between request %d and %d = %v, want >= %v", i-1, i, gap, delay)
+		}
+	}
+}
