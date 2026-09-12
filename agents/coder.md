@@ -12,6 +12,8 @@ permission:
   read:
     "*": allow
     "**/.env*": ask
+    ".agents/*": allow
+    ".opencode/*": allow
   glob: allow
   grep: allow
   edit:
