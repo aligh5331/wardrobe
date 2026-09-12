@@ -50,3 +50,22 @@ the rules governing its own behavior isn't meaningfully bound by them.
 Enforced via `"AGENTS.md": deny` in each role's `edit` permission
 block — if you're reading this and considering editing it, that's the
 signal to stop and flag it to Ali instead.
+
+## Prefer one command per bash call
+
+opencode parses each bash invocation and checks every distinct
+sub-command it finds against permission rules independently — chaining
+with `&&`/`;`/`|` does not let an unapproved command hide behind an
+approved one. But it does mean a single chained call is only as
+"approved" as its least-approved piece: if one sub-command in the
+chain has no matching rule, the whole call needs manual approval, even
+if the other pieces are already allow-listed.
+
+Prefer separate calls anyway, for two practical reasons, not a
+security one:
+- A denied or ask-gated piece in the middle of a chain can abort the
+  whole sequence partway through, leaving things in an unclear state.
+- Keeping calls atomic makes it obvious on review which specific
+  command needed approval and why.
+
+This is a workflow preference, not a workaround for a permission gap.

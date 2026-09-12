@@ -7,20 +7,33 @@ steps: 10
 permission:
   "*": ask
   skill: allow
-  read: allow
+  list: allow
   glob: allow
   grep: allow
-  edit:
+  webfetch: deny
+  read:
     "*": allow
+    "**/.env*": ask
+  write:
     "backlog/**": allow
     "src/**": deny
     "tests/**": deny
     "0*.md": deny
     "agents/*.md": deny
+    "AGENTS.md": deny
     "temp/**": deny
     "/tmp/**": deny
     "/var/tmp/**": deny
+  edit:
+    "*": allow
+    "src/**": deny
+    "tests/**": deny
+    "0*.md": deny
+    "agents/*.md": deny
     "AGENTS.md": deny
+    "temp/**": deny
+    "/tmp/**": deny
+    "/var/tmp/**": deny
   external_directory: deny
   bash: deny
   task: deny

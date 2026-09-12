@@ -9,37 +9,68 @@ permission:
   skill: allow
   context7_resolve-library-id: allow
   context7_query-docs: allow
+  list: allow
+  glob: allow
+  grep: allow
+  todowrite: allow
+  todoread: allow
+  webfetch: deny
   read:
     "*": allow
     "**/.env*": ask
-    ".agents/*": allow
-    ".opencode/*": allow
-  glob: allow
-  grep: allow
-  edit:
+  write:
     "*": allow
-    "backlog/**": allow
     "0*.md": deny
     "agents/*.md": deny
+    "AGENTS.md": deny
     "temp/**": ask
     "/tmp/**": deny
     "/var/tmp/**": deny
+  edit:
+    "*": allow
+    "0*.md": deny
+    "agents/*.md": deny
     "AGENTS.md": deny
+    "temp/**": ask
+    "/tmp/**": deny
+    "/var/tmp/**": deny
   external_directory: deny
+  task: deny
   bash:
     "git status": allow
     "git diff*": allow
     "git log*": allow
+    "git show*": allow
+    "git blame*": allow
+    "git branch": allow
     "git add *": allow
     "git commit *": ask
+    "git stash*": ask
     "git checkout -b *": deny
     "git push*": deny
     "git merge*": deny
     "git reset*": deny
+    "git rebase*": deny
+    "git cherry-pick*": deny
+    "git restore*": deny
+    "git clean*": deny
     "git branch -D*": deny
+    "git tag*": deny
+    "git remote*": deny
+    "git config*": deny
+    "git fetch*": deny
     "rm -rf*": deny
     "sudo*": deny
-  task: deny
+    "go build*": allow
+    "go vet*": allow
+    "go test*": allow
+    "go fmt*": ask
+    "go mod tidy": ask
+    "go mod download": allow
+    "go run*": ask
+    "go clean*": deny
+    "go install*": deny
+    "go get*": deny
 ---
 
 # Agent: Coder

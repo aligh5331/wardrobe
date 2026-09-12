@@ -7,9 +7,14 @@ steps: 10
 permission:
   "*": ask
   skill: allow
-  read: allow
+  list: allow
   glob: allow
   grep: allow
+  webfetch: deny
+  read:
+    "*": allow
+    "**/.env*": ask
+  write: deny
   edit:
     "backlog/**": allow
     "src/**": deny
@@ -17,19 +22,34 @@ permission:
     "test/**": deny
     "0*.md": deny
     "agents/*.md": deny
+    "AGENTS.md": deny
     "temp/**": deny
     "/tmp/**": deny
     "/var/tmp/**": deny
-    "AGENTS.md": deny
   external_directory: deny
+  task: deny
   bash:
+    "git status": allow
     "git diff*": allow
     "git log*": allow
+    "git show*": allow
+    "git blame*": allow
+    "git branch": allow
     "git checkout -b *": deny
     "git push*": deny
+    "git merge*": deny
+    "git reset*": deny
+    "git rebase*": deny
+    "git cherry-pick*": deny
+    "git restore*": deny
+    "git clean*": deny
+    "git branch -D*": deny
+    "git tag*": deny
+    "git remote*": deny
+    "git config*": deny
+    "git fetch*": deny
     "rm -rf*": deny
     "sudo*": deny
-  task: deny
 ---
 
 # Agent: Reviewer

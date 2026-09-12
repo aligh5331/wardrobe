@@ -1,6 +1,44 @@
 # Decisions
 
 Newest first. Each entry: decision, date-ish context, why.
+
+## Bash permission checks are per-sub-command, not per-raw-string
+Investigated after observing that chained bash commands (e.g. `echo
+"x" && go vet ./... && go test ./...`) consistently triggered an "ask"
+prompt whenever any single piece lacked a matching permission rule,
+with the approval dialog listing each piece separately.
+
+Confirmed against opencode 1.18.30's actual source
+(`packages/opencode/src/tool/shell.ts`, registered under the `bash`
+tool ID): commands are parsed with a real bash-grammar parser, and
+every distinct sub-command the parser identifies (correctly split
+across `&&`, `||`, `;`, `|`) is checked against permission rules as
+its own independent resource. Chaining does not let an unapproved
+command hide behind an approved one, and a wildcard rule like `"git
+diff*"` cannot match past an operator into an unrelated appended
+command — each side of the chain is evaluated on its own.
+
+A separate, unrelated file in the same codebase
+(`packages/core/src/tool/bash.ts`, a "minimal V2 core" scaffold
+explicitly marked as not yet having this parsing ported in) does treat
+the whole raw command string as a single resource, and matches the
+behavior described in an open opencode GitHub issue. That file is not
+imported anywhere in the running `opencode` package as of this
+version — it does not affect actual behavior. Worth re-checking if
+opencode's "V2" migration referenced in that file's TODOs ever lands
+and replaces the current shell tool.
+
+Practical takeaway logged in `AGENTS.md`: the earlier "never chain
+bash commands" instruction was written on an incorrect security
+assumption (that chaining could bypass a permission boundary) and has
+been corrected to a workflow preference instead — chaining is safe,
+but a single unapproved piece still blocks the whole call, so separate
+calls stay easier to review and fail more predictably. The stronger
+fix for prompt fatigue is `AGENTS.md`'s existing guidance to prefer
+dedicated tools (`list`, `grep`, `read`) over their bash equivalents,
+since those are separate permission categories already set to `allow`
+and never touch the bash arity/parsing path at all.
+
 ## Distribution model: self-hosted single-user, not multi-tenant
 "Fully local" means each install runs entirely on infrastructure its
 owner controls — not that the project is single-person-only. Other
