@@ -43,33 +43,33 @@ permission:
   external_directory: deny
   task: deny
   bash:
-    "git status": allow
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
-    "git blame*": allow
-    "git branch": allow
+    "git status *": allow
+    "git diff *": allow
+    "git log *": allow
+    "git show *": allow
+    "git blame *": allow
+    "git branch *": allow
     "git checkout -b *": deny
-    "git push*": deny
-    "git merge*": deny
-    "git reset*": deny
-    "git rebase*": deny
-    "git cherry-pick*": deny
-    "git restore*": deny
-    "git clean*": deny
-    "git branch -D*": deny
-    "git tag*": deny
-    "git remote*": deny
-    "git config*": deny
-    "git fetch*": deny
-    "rm -rf*": deny
-    "sudo*": deny
-    "go build*": allow
-    "go vet*": allow
-    "go test*": allow
-    "go clean*": deny
-    "go install*": deny
-    "go get*": deny
+    "git push *": deny
+    "git merge *": deny
+    "git reset *": deny
+    "git rebase *": deny
+    "git cherry-pick *": deny
+    "git restore *": deny
+    "git clean *": deny
+    "git branch -D *": deny
+    "git tag *": deny
+    "git remote *": deny
+    "git config *": deny
+    "git fetch *": deny
+    "rm -rf *": deny
+    "sudo *": deny
+    "go build *": allow
+    "go vet *": allow
+    "go test *": allow
+    "go clean *": deny
+    "go install *": deny
+    "go get *": deny
 ---
 
 # Agent: Tester
