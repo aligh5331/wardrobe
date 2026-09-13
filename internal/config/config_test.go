@@ -13,6 +13,7 @@ func setEnv(t *testing.T, env map[string]string) {
 	for _, name := range []string{
 		"VLM_URL", "VLM_API_KEY",
 		"VLM_SERIALIZE_REQUESTS", "VLM_REQUEST_DELAY_MS",
+		"VLM_TEMPERATURE",
 		"LLM_URL", "LLM_API_KEY",
 	} {
 		t.Setenv(name, env[name])
@@ -21,13 +22,14 @@ func setEnv(t *testing.T, env map[string]string) {
 
 func TestLoad(t *testing.T) {
 	tests := []struct {
-		name          string
-		env           map[string]string
-		wantErr       string
-		wantKey       string
-		wantSerialize bool
-		wantDelayMS   int
-		wantWarnings  int
+		name            string
+		env             map[string]string
+		wantErr         string
+		wantKey         string
+		wantSerialize   bool
+		wantDelayMS     int
+		wantTemperature float64
+		wantWarnings    int
 	}{
 		{
 			name:    "missing VLM_URL errors naming it",
@@ -35,43 +37,50 @@ func TestLoad(t *testing.T) {
 			wantErr: "VLM_URL",
 		},
 		{
-			name:        "empty VLM_API_KEY proceeds with no key",
-			env:         map[string]string{"VLM_URL": "http://vlm", "VLM_API_KEY": ""},
-			wantKey:     "",
-			wantDelayMS: 0,
+			name:            "empty VLM_API_KEY proceeds with no key",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_API_KEY": ""},
+			wantKey:         "",
+			wantDelayMS:     0,
+			wantTemperature: 0.4,
 		},
 		{
-			name:          "serialize unset defaults to false",
-			env:           map[string]string{"VLM_URL": "http://vlm"},
-			wantSerialize: false,
+			name:            "serialize unset defaults to false",
+			env:             map[string]string{"VLM_URL": "http://vlm"},
+			wantSerialize:   false,
+			wantTemperature: 0.4,
 		},
 		{
-			name:          "serialize true is honored",
-			env:           map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": "true"},
-			wantSerialize: true,
+			name:            "serialize true is honored",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": "true"},
+			wantSerialize:   true,
+			wantTemperature: 0.4,
 		},
 		{
-			name:         "nonzero delay with serialize unset warns",
-			env:          map[string]string{"VLM_URL": "http://vlm", "VLM_REQUEST_DELAY_MS": "15"},
-			wantDelayMS:  15,
-			wantWarnings: 1,
+			name:            "nonzero delay with serialize unset warns",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_REQUEST_DELAY_MS": "15"},
+			wantDelayMS:     15,
+			wantWarnings:    1,
+			wantTemperature: 0.4,
 		},
 		{
-			name:         "nonzero delay with serialize false warns",
-			env:          map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": "false", "VLM_REQUEST_DELAY_MS": "15"},
-			wantDelayMS:  15,
-			wantWarnings: 1,
+			name:            "nonzero delay with serialize false warns",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": "false", "VLM_REQUEST_DELAY_MS": "15"},
+			wantDelayMS:     15,
+			wantWarnings:    1,
+			wantTemperature: 0.4,
 		},
 		{
-			name:          "nonzero delay with serialize true does not warn",
-			env:           map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": "true", "VLM_REQUEST_DELAY_MS": "15"},
-			wantDelayMS:   15,
-			wantSerialize: true,
-			wantWarnings:  0,
+			name:            "nonzero delay with serialize true does not warn",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": "true", "VLM_REQUEST_DELAY_MS": "15"},
+			wantDelayMS:     15,
+			wantSerialize:   true,
+			wantWarnings:    0,
+			wantTemperature: 0.4,
 		},
 		{
-			name: "unset LLM_URL proceeds",
-			env:  map[string]string{"VLM_URL": "http://vlm", "LLM_URL": ""},
+			name:            "unset LLM_URL proceeds",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LLM_URL": ""},
+			wantTemperature: 0.4,
 		},
 		{
 			name:    "invalid VLM_REQUEST_DELAY_MS errors naming it",
@@ -82,6 +91,22 @@ func TestLoad(t *testing.T) {
 			name:    "invalid VLM_SERIALIZE_REQUESTS errors naming it",
 			env:     map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": "maybe"},
 			wantErr: "VLM_SERIALIZE_REQUESTS",
+		},
+		// ING-006: VLM_TEMPERATURE tests
+		{
+			name:            "unset VLM_TEMPERATURE defaults to 0.4",
+			env:             map[string]string{"VLM_URL": "http://vlm"},
+			wantTemperature: 0.4,
+		},
+		{
+			name:            "valid VLM_TEMPERATURE is honored",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "0.7"},
+			wantTemperature: 0.7,
+		},
+		{
+			name:    "invalid VLM_TEMPERATURE errors naming it",
+			env:     map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "abc"},
+			wantErr: "VLM_TEMPERATURE",
 		},
 	}
 
@@ -110,6 +135,9 @@ func TestLoad(t *testing.T) {
 			}
 			if cfg.VLMRequestDelayMS != tt.wantDelayMS {
 				t.Errorf("VLMRequestDelayMS = %d, want %d", cfg.VLMRequestDelayMS, tt.wantDelayMS)
+			}
+			if cfg.VLMTemperature != tt.wantTemperature {
+				t.Errorf("VLMTemperature = %v, want %v", cfg.VLMTemperature, tt.wantTemperature)
 			}
 			if got := len(cfg.Warnings()); got != tt.wantWarnings {
 				t.Errorf("len(Warnings()) = %d, want %d", got, tt.wantWarnings)

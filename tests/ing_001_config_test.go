@@ -17,6 +17,7 @@ var contractVars = []string{
 	"VLM_API_KEY",
 	"VLM_SERIALIZE_REQUESTS",
 	"VLM_REQUEST_DELAY_MS",
+	"VLM_TEMPERATURE",
 	"LLM_URL",
 	"LLM_API_KEY",
 }
@@ -317,5 +318,71 @@ func TestING001_Edge_NegativeDelayNoWarning(t *testing.T) {
 	}
 	if got := cfg.Warnings(); len(got) != 0 {
 		t.Errorf("Warnings() = %v, want none for negative delay", got)
+	}
+}
+
+// ING-006 acceptance criteria -------------------------------
+
+// AC1: Given VLM_TEMPERATURE is unset / When the server starts /
+// Then it defaults to 0.4.
+func TestING006_AC1_DefaultTemperature(t *testing.T) {
+	setContractEnv(t, map[string]string{"VLM_URL": "http://vlm.local"})
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load() error = %v, want nil", err)
+	}
+	if cfg.VLMTemperature != 0.4 {
+		t.Errorf("VLMTemperature = %v, want 0.4", cfg.VLMTemperature)
+	}
+}
+
+// AC2: Given VLM_TEMPERATURE is set to a non-numeric value /
+// When the server starts / Then it exits with a startup error
+// naming VLM_TEMPERATURE as invalid.
+func TestING006_AC2_InvalidTemperatureErrors(t *testing.T) {
+	setContractEnv(t, map[string]string{
+		"VLM_URL":         "http://vlm.local",
+		"VLM_TEMPERATURE": "abc",
+	})
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatalf("config.Load() = nil, want error naming VLM_TEMPERATURE")
+	}
+	if !strings.Contains(err.Error(), "VLM_TEMPERATURE") {
+		t.Errorf("error = %q, want it to name VLM_TEMPERATURE", err)
+	}
+}
+
+// AC3: Given VLM_TEMPERATURE is set to a valid float /
+// When the server starts / Then startup proceeds normally and the
+// value is carried in the config for the VLM client (ING-007).
+func TestING006_AC3_ValidTemperatureProceeds(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantVal float64
+	}{
+		{name: "0.4", value: "0.4", wantVal: 0.4},
+		{name: "0.7", value: "0.7", wantVal: 0.7},
+		{name: "1.0", value: "1.0", wantVal: 1.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setContractEnv(t, map[string]string{
+				"VLM_URL":         "http://vlm.local",
+				"VLM_TEMPERATURE": tt.value,
+			})
+
+			cfg, err := config.Load()
+			if err != nil {
+				t.Fatalf("config.Load() error = %v, want nil", err)
+			}
+			if cfg.VLMTemperature != tt.wantVal {
+				t.Errorf("VLMTemperature = %v, want %v", cfg.VLMTemperature, tt.wantVal)
+			}
+		})
 	}
 }

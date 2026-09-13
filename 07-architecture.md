@@ -124,7 +124,7 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
 | `LLM_API_KEY` | no | — | empty allowed, no auth header sent |
 | `VLM_SERIALIZE_REQUESTS` | no | `false` | `true` forces a global one-at-a-time queue/mutex around all VLM calls |
 | `VLM_REQUEST_DELAY_MS` | no | `0` | if >0, wait this long after each VLM response before sending the next request. Only meaningful when `VLM_SERIALIZE_REQUESTS=true` |
-
+| `VLM_TEMPERATURE` | no | `0.4` | used for VLM temperature to let VLM be not constand and get error based on the image |
 ### VLM request behavior
 - **Default:** concurrent requests to `VLM_URL`, no artificial
   bottleneck — the app shouldn't stall on a single-threaded queue when
