@@ -46,8 +46,6 @@ ambiguous, say so on the ticket and stop — don't guess and proceed.
   via bash.
 - **grep** — search file contents by pattern. Use instead of
   `grep`/`grep -r` via bash.
-- **list** — list a directory's contents. Use instead of `ls`/`ls -la`
-  via bash.
 - **todowrite / todoread** — track a multi-step checklist for this
   session.
 - **context7_resolve-library-id / context7_query-docs** — look up
