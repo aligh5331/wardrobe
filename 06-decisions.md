@@ -2,6 +2,18 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## VLM_TEMPERATURE acceptable range: 0.0–1.0, default 0.4
+Bounded below the completion API's technically-wider range (commonly
+0–2) because this project's use is structured JSON tagging, not
+open-ended generation — pushing temperature much past 1.0 mainly
+inflates the malformed-JSON rate that ING-005's retry policy exists
+to handle, not the useful answer-diversity it's meant to produce. 0.0
+stays valid (not banned) for deliberate deterministic runs, but isn't
+the default, since a 0.0 retry mostly just reproduces attempt 1's
+answer rather than giving a genuinely independent second sample.
+Enforced at startup (ING-006) — out-of-range same as non-numeric: a
+startup error naming the valid range.
+
 ## Malformed VLM output: retry once at nonzero temperature, then flag
 `05-vlm-tagging-spec.md` originally left "reject and retry" vs. "flag
 for manual review" as an either/or, unresolved. Settled as: retry
