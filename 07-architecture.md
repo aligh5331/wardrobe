@@ -116,16 +116,15 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
 
 ### Env var contract
 
-| Var | Required? | Default | Behavior |
-|---|---|---|---|
-| `VLM_URL` | yes | — | startup error if empty |
-| `VLM_API_KEY` | no | — | empty allowed, no auth header sent |
-| `LLM_URL` | yes (once used) | — | startup error if empty; no consumer in Phase 1 |
-| `LLM_API_KEY` | no | — | empty allowed, no auth header sent |
-| `VLM_SERIALIZE_REQUESTS` | no | `false` | `true` forces a global one-at-a-time queue/mutex around all VLM calls |
-| `VLM_REQUEST_DELAY_MS` | no | `0` | if >0, wait this long after each VLM response before sending the next request. Only meaningful when `VLM_SERIALIZE_REQUESTS=true` |
-| `VLM_TEMPERATURE` | no | `0.4` | used for VLM temperature to let VLM be not constand and get error based on the image |
-### VLM request behavior
+| Var                      | Required?       | Default | Behavior                                                                                                                                                                                                                                        |
+|--------------------------|-----------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `VLM_URL`                | yes             | —       | startup error if empty                                                                                                                                                                                                                          |
+| `VLM_API_KEY`            | no              | —       | empty allowed, no auth header sent                                                                                                                                                                                                              |
+| `LLM_URL`                | yes (once used) | —       | startup error if empty; no consumer in Phase 1                                                                                                                                                                                                  |
+| `LLM_API_KEY`            | no              | —       | empty allowed, no auth header sent                                                                                                                                                                                                              |
+| `VLM_SERIALIZE_REQUESTS` | no              | `false` | `true` forces a global one-at-a-time queue/mutex around all VLM calls                                                                                                                                                                           |
+| `VLM_REQUEST_DELAY_MS`   | no              | `0`     | if >0, wait this long after each VLM response before sending the next request. Only meaningful when `VLM_SERIALIZE_REQUESTS=true`                                                                                                               |
+| `VLM_TEMPERATURE`        | no              | `0.4`   | sampling temperature sent on each VLM tagging request; finite number in `0.0`–`1.0` inclusive. Anything else (non-numeric, NaN/Inf, negative, or >1.0) is a startup error naming the variable. `0.0` is valid for deliberate deterministic runs |### VLM request behavior
 - **Default:** concurrent requests to `VLM_URL`, no artificial
   bottleneck — the app shouldn't stall on a single-threaded queue when
   there's no known issue with the model in use.
