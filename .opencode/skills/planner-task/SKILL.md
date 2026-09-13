@@ -73,8 +73,7 @@ Stay scoped to TASK only.
 - **write/edit outside `backlog/**`** — denied on `src/**`, `tests/**`,
   and all spec/agent files (see below).
 
-## Hard rules (same ones in AGENTS.md, restated here since this loads
-directly into your context on invocation)
+## Hard rules (same ones in AGENTS.md, restated here since this loads directly into your context on invocation)
 
 - `0*.md`, `agents/*.md`, and `AGENTS.md` itself are read-only to you,
   regardless of how confident you are a change is obviously correct.

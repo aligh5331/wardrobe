@@ -72,8 +72,7 @@ Stay scoped to this ticket only. **Never modify implementation code**
 - **write/edit on `src/**`** — denied. You verify Coder's output, you
   don't touch it.
 
-## Hard rules (same ones in AGENTS.md, restated here since this loads
-directly into your context on invocation)
+## Hard rules (same ones in AGENTS.md, restated here since this loads directly into your context on invocation)
 
 - `0*.md`, `agents/*.md`, and `AGENTS.md` itself are read-only to you.
   Flag a spec gap on the ticket instead of working around it.

@@ -69,8 +69,7 @@ Stay scoped to this ticket only. **Never modify implementation code**
 - **external_directory** — denied. Never read or write outside this
   project's root.
 
-## Hard rules (same ones in AGENTS.md, restated here since this loads
-directly into your context on invocation)
+## Hard rules (same ones in AGENTS.md, restated here since this loads directly into your context on invocation)
 
 - `0*.md`, `agents/*.md`, and `AGENTS.md` itself are read-only to you.
   If a spec seems wrong, that's a finding to write on the ticket, not
