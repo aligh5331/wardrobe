@@ -4,6 +4,7 @@ mode: all
 # model: provider/model   # optional — set if you want something other than opencode's default for this agent
 color: info
 steps: 10
+temperature: 0.5
 permission:
   "*": ask
   skill: allow
