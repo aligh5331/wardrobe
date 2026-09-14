@@ -144,6 +144,14 @@ func NewClient(vlmURL, apiKey string, opts ...Option) *Client {
 	return c
 }
 
+// Temperature returns the sampling temperature the client will send on its
+// next request, read from the configured source. ING-005 logs the temperature
+// used for each attempt; the value is read fresh here just as Tag reads it
+// fresh when building the payload.
+func (c *Client) Temperature() float64 {
+	return c.temperature()
+}
+
 // acquire takes the serialization queue when enabled. It returns a
 // release function that, when serialize is on, holds the queue through
 // the post-response delay before allowing the next request.

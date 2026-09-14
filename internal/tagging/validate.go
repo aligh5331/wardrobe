@@ -15,6 +15,38 @@ import (
 // to decide between retrying and flagging for manual review.
 var ErrInvalidTaggingResult = errors.New("invalid tagging result")
 
+// Failure types recorded in ING-005's attempt log. They are exactly the three
+// rejection reasons in 05-vlm-tagging-spec.md "Output validation".
+const (
+	FailureTypeMalformedJSON        = "malformed_json"
+	FailureTypeInvalidEnum          = "invalid_enum"
+	FailureTypeMissingRequiredField = "missing_required_field"
+)
+
+// ValidationError is a taxonomy/schema validation failure. FailureType is one
+// of the FailureType* constants and FailureDetail names the specific field or
+// value, so ING-005 can log a failure without parsing its message. It wraps
+// ErrInvalidTaggingResult, so errors.Is(err, ErrInvalidTaggingResult) still
+// identifies bad model output.
+type ValidationError struct {
+	FailureType   string
+	FailureDetail string
+	err           error
+}
+
+func (e *ValidationError) Error() string { return e.err.Error() }
+func (e *ValidationError) Unwrap() error { return e.err }
+
+// newValidationError builds a ValidationError whose message preserves the
+// pre-existing "invalid tagging result: <detail>" wording.
+func newValidationError(failureType, detail string) *ValidationError {
+	return &ValidationError{
+		FailureType:   failureType,
+		FailureDetail: detail,
+		err:           fmt.Errorf("%w: %s", ErrInvalidTaggingResult, detail),
+	}
+}
+
 // TaggingResult is the validated tagging output for one garment: exactly the
 // tagging fields of 04-data-schema.md. Catalog-only fields (id, photo_path,
 // added_date, notes) are added when the record is written to the store, not
@@ -67,7 +99,11 @@ var (
 func ParseTaggingResult(raw string) (TaggingResult, error) {
 	var r TaggingResult
 	if err := json.Unmarshal([]byte(raw), &r); err != nil {
-		return TaggingResult{}, fmt.Errorf("%w: malformed json: %w", ErrInvalidTaggingResult, err)
+		return TaggingResult{}, &ValidationError{
+			FailureType:   FailureTypeMalformedJSON,
+			FailureDetail: "malformed json: " + err.Error(),
+			err:           fmt.Errorf("%w: malformed json: %w", ErrInvalidTaggingResult, err),
+		}
 	}
 	if err := r.validate(); err != nil {
 		return TaggingResult{}, err
@@ -87,9 +123,10 @@ func (r TaggingResult) validate() error {
 		return requiredFieldError("subcategory")
 	}
 	if !contains(validSubcategories[r.Category], r.Subcategory) {
-		return fmt.Errorf("%w: invalid category/subcategory pair %q/%q; valid subcategories for %q: %s",
-			ErrInvalidTaggingResult, r.Category, r.Subcategory, r.Category,
-			strings.Join(validSubcategories[r.Category], ", "))
+		return newValidationError(FailureTypeInvalidEnum, fmt.Sprintf(
+			"invalid category/subcategory pair %q/%q; valid subcategories for %q: %s",
+			r.Category, r.Subcategory, r.Category,
+			strings.Join(validSubcategories[r.Category], ", ")))
 	}
 
 	if r.DominantColor == "" {
@@ -106,8 +143,9 @@ func (r TaggingResult) validate() error {
 	}
 	for i, c := range r.SecondaryColors {
 		if !contains(colorPalette, c) {
-			return fmt.Errorf("%w: secondary_colors[%d] %q is not in the palette; allowed: %s",
-				ErrInvalidTaggingResult, i, c, strings.Join(colorPalette, ", "))
+			return newValidationError(FailureTypeInvalidEnum, fmt.Sprintf(
+				"secondary_colors[%d] %q is not in the palette; allowed: %s",
+				i, c, strings.Join(colorPalette, ", ")))
 		}
 	}
 
@@ -136,12 +174,13 @@ func (r TaggingResult) validate() error {
 }
 
 func requiredFieldError(field string) error {
-	return fmt.Errorf("%w: missing required field %s (must not be null or omitted)", ErrInvalidTaggingResult, field)
+	return newValidationError(FailureTypeMissingRequiredField,
+		fmt.Sprintf("missing required field %s (must not be null or omitted)", field))
 }
 
 func enumFieldError(field, value string, allowed []string) error {
-	return fmt.Errorf("%w: %s %q is not valid; allowed: %s",
-		ErrInvalidTaggingResult, field, value, strings.Join(allowed, ", "))
+	return newValidationError(FailureTypeInvalidEnum,
+		fmt.Sprintf("%s %q is not valid; allowed: %s", field, value, strings.Join(allowed, ", ")))
 }
 
 func contains(list []string, value string) bool {

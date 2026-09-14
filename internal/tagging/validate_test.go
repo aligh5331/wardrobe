@@ -194,6 +194,43 @@ func TestParseTaggingResult_MalformedJSON(t *testing.T) {
 	}
 }
 
+// ING-005: validation failures carry a machine-readable failure type and a
+// detail naming the specific field/value, while still wrapping
+// ErrInvalidTaggingResult.
+func TestParseTaggingResult_FailureTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      string
+		wantType string
+	}{
+		{"malformed json", "not json", FailureTypeMalformedJSON},
+		{"missing required field", validJSON(t, map[string]any{"subcategory": nil}), FailureTypeMissingRequiredField},
+		{"invalid enum", validJSON(t, map[string]any{"dominant_color": "gold"}), FailureTypeInvalidEnum},
+		{"invalid subcategory pair", validJSON(t, map[string]any{"category": "top", "subcategory": "jeans"}), FailureTypeInvalidEnum},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseTaggingResult(tt.raw)
+			if err == nil {
+				t.Fatal("ParseTaggingResult() error = nil, want validation failure")
+			}
+			if !errors.Is(err, ErrInvalidTaggingResult) {
+				t.Errorf("errors.Is(err, ErrInvalidTaggingResult) = false, err = %v", err)
+			}
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error %v is not a *ValidationError", err)
+			}
+			if ve.FailureType != tt.wantType {
+				t.Errorf("FailureType = %q, want %q", ve.FailureType, tt.wantType)
+			}
+			if ve.FailureDetail == "" {
+				t.Error("FailureDetail is empty, want the specific field/value")
+			}
+		})
+	}
+}
+
 // Every enum field must be in the taxonomy, and every tagging field is
 // required for the catalog row.
 func TestParseTaggingResult_InvalidEnumsAndMissingFields(t *testing.T) {
