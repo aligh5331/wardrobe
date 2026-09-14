@@ -35,7 +35,7 @@ type Config struct {
 
 // Load reads the env var contract from the process environment and
 // validates it. It returns an error only for misconfiguration that must
-// fail startup: a missing VLM_URL, or an unparseable optional value.
+// fail startup: a missing VLM_URL, out-of-range VLM_TEMPERATURE or an unparseable optional value.
 // LLM_URL is deliberately not validated in Phase 1 (no consumer yet).
 func Load() (*Config, error) {
 	cfg := &Config{
