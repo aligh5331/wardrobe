@@ -108,6 +108,42 @@ func TestLoad(t *testing.T) {
 			env:     map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "abc"},
 			wantErr: "VLM_TEMPERATURE",
 		},
+		// ING-008: VLM_TEMPERATURE must be finite and within 0.0-1.0.
+		{
+			name:    "NaN VLM_TEMPERATURE errors naming it",
+			env:     map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "NaN"},
+			wantErr: "VLM_TEMPERATURE",
+		},
+		{
+			name:    "Inf VLM_TEMPERATURE errors naming it",
+			env:     map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "Inf"},
+			wantErr: "VLM_TEMPERATURE",
+		},
+		{
+			name:    "minus Inf VLM_TEMPERATURE errors naming it",
+			env:     map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "-Inf"},
+			wantErr: "VLM_TEMPERATURE",
+		},
+		{
+			name:    "negative VLM_TEMPERATURE errors naming it",
+			env:     map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "-1"},
+			wantErr: "VLM_TEMPERATURE",
+		},
+		{
+			name:    "out-of-range VLM_TEMPERATURE errors naming it",
+			env:     map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "1.5"},
+			wantErr: "VLM_TEMPERATURE",
+		},
+		{
+			name:            "zero VLM_TEMPERATURE is accepted",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "0"},
+			wantTemperature: 0,
+		},
+		{
+			name:            "upper-bound VLM_TEMPERATURE is accepted",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "1.0"},
+			wantTemperature: 1.0,
+		},
 	}
 
 	for _, tt := range tests {
@@ -144,4 +180,28 @@ func TestLoad(t *testing.T) {
 			}
 		})
 	}
+}
+
+// floatEnv is shared by every float env var. The finite-value (NaN/Inf)
+// guard applies unconditionally, while the numeric range is opt-in: a
+// caller that passes nil bounds is not silently constrained by
+// VLM_TEMPERATURE's 0.0-1.0 range.
+func TestFloatEnv_BoundsAreOptIn(t *testing.T) {
+	t.Run("nil bounds accept a large finite value", func(t *testing.T) {
+		t.Setenv("TEST_FLOAT_ENV", "100")
+		got, err := floatEnv("TEST_FLOAT_ENV", 0.4, nil, nil)
+		if err != nil {
+			t.Fatalf("floatEnv() error = %v, want nil for an unbounded finite value", err)
+		}
+		if got != 100 {
+			t.Errorf("floatEnv() = %v, want 100", got)
+		}
+	})
+
+	t.Run("nil bounds still reject NaN", func(t *testing.T) {
+		t.Setenv("TEST_FLOAT_ENV", "NaN")
+		if _, err := floatEnv("TEST_FLOAT_ENV", 0.4, nil, nil); err == nil {
+			t.Fatal("floatEnv() = nil, want error for NaN even without bounds")
+		}
+	})
 }

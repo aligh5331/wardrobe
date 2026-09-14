@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 )
@@ -60,7 +61,8 @@ func Load() (*Config, error) {
 	}
 	cfg.VLMRequestDelayMS = delayMS
 
-	temperature, err := floatEnv("VLM_TEMPERATURE", 0.4)
+	minTemp, maxTemp := 0.0, 1.0
+	temperature, err := floatEnv("VLM_TEMPERATURE", 0.4, &minTemp, &maxTemp)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +107,12 @@ func intEnv(name string, fallback int) (int, error) {
 	return v, nil
 }
 
-func floatEnv(name string, fallback float64) (float64, error) {
+// floatEnv reads an optional float env var. Non-finite values (NaN, Inf,
+// -Inf) are always rejected — a non-finite float is never a usable
+// setting. If min and/or max are non-nil the parsed value must fall
+// within those bounds; pass nil for a variable with no natural range, so
+// one variable's range never silently constrains another's.
+func floatEnv(name string, fallback float64, min, max *float64) (float64, error) {
 	raw, ok := os.LookupEnv(name)
 	if !ok || raw == "" {
 		return fallback, nil
@@ -113,6 +120,19 @@ func floatEnv(name string, fallback float64) (float64, error) {
 	v, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
 		return 0, fmt.Errorf("invalid %s %q: must be a number", name, raw)
+	}
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, fmt.Errorf("invalid %s %q: must be a finite number", name, raw)
+	}
+	lo, hi := math.Inf(-1), math.Inf(1)
+	if min != nil {
+		lo = *min
+	}
+	if max != nil {
+		hi = *max
+	}
+	if v < lo || v > hi {
+		return 0, fmt.Errorf("invalid %s %q: must be between %v and %v", name, raw, lo, hi)
 	}
 	return v, nil
 }
