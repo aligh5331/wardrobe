@@ -96,6 +96,44 @@ func TestTag(t *testing.T) {
 	}
 }
 
+func TestTag_SendsTemperature(t *testing.T) {
+	// ING-007: every request carries "temperature"; WithTemperature's
+	// source is read afresh per call so ING-005's retry is an independent
+	// second sample rather than a cached repeat.
+	var got []float64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("request body not valid JSON: %v", err)
+		}
+		got = append(got, body["temperature"].(float64))
+		w.Write([]byte(cannedResponse))
+	}))
+	defer srv.Close()
+
+	// No option: the config default is sent.
+	if _, err := NewClient(srv.URL, "").Tag(context.Background(), writeTestImage(t)); err != nil {
+		t.Fatalf("Tag() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != defaultTemperature {
+		t.Fatalf("temperatures = %v, want [%v] (config default)", got, defaultTemperature)
+	}
+
+	// With a source: changing it between calls changes the payload.
+	temp := 0.2
+	c := NewClient(srv.URL, "", WithTemperature(func() float64 { return temp }))
+	if _, err := c.Tag(context.Background(), writeTestImage(t)); err != nil {
+		t.Fatalf("Tag() error = %v", err)
+	}
+	temp = 0.9
+	if _, err := c.Tag(context.Background(), writeTestImage(t)); err != nil {
+		t.Fatalf("Tag() error = %v", err)
+	}
+	if len(got) != 3 || got[1] != 0.2 || got[2] != 0.9 {
+		t.Errorf("temperatures = %v, want [0.2 0.9] read fresh each call", got[1:])
+	}
+}
+
 func TestTag_SendsAuthHeaderWhenKeySet(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

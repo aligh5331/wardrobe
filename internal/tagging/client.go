@@ -60,6 +60,12 @@ above for the chosen category. pattern is also required — if the item is
 a single solid color with no visible stripe/plaid/print structure, use
 "solid" rather than omitting the field.`
 
+// defaultTemperature is the sampling temperature sent when no
+// WithTemperature source is configured. It mirrors VLM_TEMPERATURE's
+// config default (07-architecture.md, 06-decisions.md) so an unwired
+// client still makes ING-005's retry a genuinely independent sample.
+const defaultTemperature = 0.4
+
 // Client sends tagging requests to one llama.cpp VLM via its
 // OpenAI-compatible /v1/chat/completions endpoint. By default it is safe
 // for concurrent use with no request queue or lock (07-architecture.md
@@ -70,6 +76,13 @@ type Client struct {
 	baseURL string
 	apiKey  string
 	http    *http.Client
+
+	// temperature returns the sampling temperature to send on each
+	// request. It is called afresh for every Tag so a caller can have it
+	// read Config.VLMTemperature per request instead of caching the value
+	// at construction (ING-007). Never nil; NewClient defaults it to
+	// defaultTemperature.
+	temperature func() float64
 
 	// serialize forces VLM calls through a single one-at-a-time queue
 	// (mu). Default false: requests run concurrently.
@@ -99,14 +112,31 @@ func WithSerialization(delayMS int) Option {
 	}
 }
 
+// WithTemperature sets the source of the sampling temperature sent with
+// every tagging request. get is called on each Tag, so passing a function
+// that reads config (e.g. func() float64 { return cfg.VLMTemperature })
+// makes each request use the current configured value rather than one
+// captured at construction — ING-005's retry gets a genuinely independent
+// second sample (ING-007). Without this option the client sends
+// defaultTemperature. A nil get leaves the default in place.
+func WithTemperature(get func() float64) Option {
+	return func(c *Client) {
+		if get != nil {
+			c.temperature = get
+		}
+	}
+}
+
 // NewClient returns a Client for the VLM at vlmURL. apiKey may be empty;
 // when empty, no Authorization header is sent on requests. Optional
-// options (e.g. WithSerialization) tune request handling.
+// options (e.g. WithSerialization, WithTemperature) tune request
+// handling.
 func NewClient(vlmURL, apiKey string, opts ...Option) *Client {
 	c := &Client{
-		baseURL: strings.TrimRight(vlmURL, "/"),
-		apiKey:  apiKey,
-		http:    http.DefaultClient,
+		baseURL:     strings.TrimRight(vlmURL, "/"),
+		apiKey:      apiKey,
+		http:        http.DefaultClient,
+		temperature: func() float64 { return defaultTemperature },
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -157,7 +187,7 @@ func (c *Client) Tag(ctx context.Context, imagePath string) (string, error) {
 	payload, err := json.Marshal(chatRequest{
 		Model:       "qwen3-vl",
 		MaxTokens:   512,
-		Temperature: 0,
+		Temperature: c.temperature(),
 		Messages: []message{
 			{Role: "system", Content: taggingPrompt},
 			{
@@ -214,7 +244,7 @@ type chatRequest struct {
 	Model       string    `json:"model"`
 	Messages    []message `json:"messages"`
 	MaxTokens   int       `json:"max_tokens"`
-	Temperature int       `json:"temperature"`
+	Temperature float64   `json:"temperature"`
 }
 
 type message struct {
