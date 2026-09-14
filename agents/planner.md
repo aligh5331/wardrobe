@@ -3,7 +3,7 @@ description: Breaks an approved spec into backlog tickets and maintains the back
 mode: all
 # model: provider/model   # optional — set if you want something other than opencode's default for this agent
 color: info
-steps: 10
+steps: 15
 temperature: 0.5
 permission:
   "*": ask

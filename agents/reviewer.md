@@ -3,7 +3,7 @@ description: Reviews a Tester-passed ticket's diff against project standards, th
 mode: all
 # model: provider/model   # optional — set if you want something other than opencode's default for this agent
 color: success
-steps: 10
+steps: 15
 temperature: 0.2
 permission:
   "*": ask
