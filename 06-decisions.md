@@ -2,6 +2,27 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Env var bounds: malformed VLM_URL passes through, unknown booleans error, negative delay clamps to 0
+Settled the ING-009 audit of `VLM_*` env vars for the same "parseable
+but semantically invalid" gap `VLM_TEMPERATURE` had (fixed in ING-008).
+
+- **`VLM_URL`** — no URL-format validation at startup. A malformed value
+  is accepted and surfaces on first use as the ING-002
+  `ErrVLMUnreachable`, rather than a hand-rolled startup URL check.
+  Rationale: that distinct, caller-handled error path already exists, so
+  a second startup failure mode for URLs buys little.
+- **`VLM_SERIALIZE_REQUESTS`** — strict `strconv.ParseBool`. An
+  unrecognized string (`"yes"`, `"ture"`) is a startup error naming the
+  variable, not a silent `false` — a typo'd boolean silently meaning
+  "off" is exactly the class of bug this audit looked for.
+- **`VLM_REQUEST_DELAY_MS`** — a negative value is clamped to `0` and
+  logged as a startup warning; it is neither stored as-is nor a hard
+  error. "Wait a negative time" is meaningless, but a typo shouldn't
+  block startup — warn so it's visible.
+- **`VLM_API_KEY`** — opaque string, no client-side format check; empty
+  means no Authorization header. API keys have no checkable client-side
+  format; validity is determined by the VLM server's response.
+
 ## VLM_TEMPERATURE acceptable range: 0.0–1.0, default 0.4
 Bounded below the completion API's technically-wider range (commonly
 0–2) because this project's use is structured JSON tagging, not

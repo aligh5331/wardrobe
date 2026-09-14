@@ -116,15 +116,15 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
 
 ### Env var contract
 
-| Var                      | Required?       | Default | Behavior                                                                                                                                                                                                                                        |
-|--------------------------|-----------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `VLM_URL`                | yes             | —       | startup error if empty                                                                                                                                                                                                                          |
-| `VLM_API_KEY`            | no              | —       | empty allowed, no auth header sent                                                                                                                                                                                                              |
-| `LLM_URL`                | yes (once used) | —       | startup error if empty; no consumer in Phase 1                                                                                                                                                                                                  |
-| `LLM_API_KEY`            | no              | —       | empty allowed, no auth header sent                                                                                                                                                                                                              |
-| `VLM_SERIALIZE_REQUESTS` | no              | `false` | `true` forces a global one-at-a-time queue/mutex around all VLM calls                                                                                                                                                                           |
-| `VLM_REQUEST_DELAY_MS`   | no              | `0`     | if >0, wait this long after each VLM response before sending the next request. Only meaningful when `VLM_SERIALIZE_REQUESTS=true`                                                                                                               |
-| `VLM_TEMPERATURE`        | no              | `0.4`   | sampling temperature sent on each VLM tagging request; finite number in `0.0`–`1.0` inclusive. Anything else (non-numeric, NaN/Inf, negative, or >1.0) is a startup error naming the variable. `0.0` is valid for deliberate deterministic runs |
+| Var                      | Required?       | Default | Behavior                                                                                                                                                                                                                                                |
+|--------------------------|-----------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `VLM_URL`                | yes             | —       | startup error if empty. No URL-format validation at startup; a malformed value is accepted and surfaces when a request is attempted as a "VLM unreachable" error (ING-002)                                                                              |
+| `VLM_API_KEY`            | no              | —       | opaque string, no client-side format check — empty allowed, no auth header sent; validity is determined by the VLM server's response                                                                                                                    |
+| `LLM_URL`                | yes (once used) | —       | startup error if empty; no consumer in Phase 1                                                                                                                                                                                                          |
+| `LLM_API_KEY`            | no              | —       | empty allowed, no auth header sent                                                                                                                                                                                                                      |
+| `VLM_SERIALIZE_REQUESTS` | no              | `false` | boolean parsed with `strconv.ParseBool` (`1/t/T/TRUE/true/True`, `0/f/F/FALSE/false/False`); unset or empty is `false`; any other value is a startup error naming the variable. `true` forces a global one-at-a-time queue/mutex around all VLM calls   |
+| `VLM_REQUEST_DELAY_MS`   | no              | `0`     | integer; negative values are clamped to 0 with a startup warning; non-numeric is a startup error naming the variable. If >0, wait this long after each VLM response before sending the next request. Only meaningful when `VLM_SERIALIZE_REQUESTS=true` |
+| `VLM_TEMPERATURE`        | no              | `0.4`   | sampling temperature sent on each VLM tagging request; finite number in `0.0`–`1.0` inclusive. Anything else (non-numeric, NaN/Inf, negative, or >1.0) is a startup error naming the variable. `0.0` is valid for deliberate deterministic runs         |
 
 ### VLM request behavior
 - **Default:** concurrent requests to `VLM_URL`, no artificial
@@ -140,7 +140,8 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
 - **Misconfiguration handling:** if `VLM_REQUEST_DELAY_MS>0` while
   `VLM_SERIALIZE_REQUESTS=false`, the backend logs a **startup
   warning** and proceeds with no delay applied (not a hard error).
-
+- **Negative delay:** a negative `VLM_REQUEST_DELAY_MS` is treated as `0`
+  and logged as a **startup warning** — not stored as-is, not a hard error.
 ## Open / future
 - `LLM_URL`/`LLM_API_KEY` have no consumer until Phase 3 (recommender).
   Don't wire up calls to it in Phase 1 tickets.
