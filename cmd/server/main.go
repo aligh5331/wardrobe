@@ -6,8 +6,9 @@ package main
 import (
 	"log"
 	"net/http"
-
 	"wardrobe/internal/config"
+
+	_ "github.com/joho/godotenv/autoload" // .env autoload
 )
 
 const addr = ":8080"
