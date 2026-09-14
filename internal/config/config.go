@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config is the resolved VLM/LLM endpoint configuration.
@@ -39,9 +40,9 @@ type Config struct {
 // LLM_URL is deliberately not validated in Phase 1 (no consumer yet).
 func Load() (*Config, error) {
 	cfg := &Config{
-		VLMURL:    os.Getenv("VLM_URL"),
+		VLMURL:    strings.TrimSpace(os.Getenv("VLM_URL")),
 		VLMAPIKey: os.Getenv("VLM_API_KEY"),
-		LLMURL:    os.Getenv("LLM_URL"),
+		LLMURL:    strings.TrimSpace(os.Getenv("LLM_URL")),
 		LLMAPIKey: os.Getenv("LLM_API_KEY"),
 	}
 
