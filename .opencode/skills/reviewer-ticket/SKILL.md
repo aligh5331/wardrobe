@@ -30,6 +30,8 @@ documented failure cases.
 When done:
 - Record an explicit approve/send-back decision with reasoning on the
   ticket
+- match privies `backlog/{TICKET_ID}.md` files (if present) format
+  for your report
 - If sent back: set `**Status:**` to `In progress`, attach a specific
   reason tied to the spec section or constraint violated
 - If approved: leave `**Status:**` at `Review` and note it's ready for

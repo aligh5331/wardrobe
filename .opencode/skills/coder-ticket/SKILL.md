@@ -29,6 +29,7 @@ referenced spec, not just against your own read of the ticket.
 When done:
 - Append an "Implementation notes" section to the ticket describing
   what you did and any assumptions made
+- match privies `backlog/{TICKET_ID}.md` files (if present) format for your report
 - Set the ticket's `**Status:**` line to `Testing`
 
 Stay scoped to this ticket only. If something in the ticket or spec is

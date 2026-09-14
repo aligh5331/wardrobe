@@ -27,10 +27,13 @@ wording. Flag any edge case the ticket didn't explicitly cover but the
 spec implies.
 
 When done:
+
 - Append a "Test results" section: pass/fail per acceptance criterion,
   with evidence
-- If all pass: set `**Status:**` to `Review`
-- If any fail: set `**Status:**` back to `In progress`, attach a
+- match privies `backlog/{TICKET_ID}.md` files (if present) format for
+  your report
+- If all pass: set **Status:** to `Review`
+- If any fail: set **Status:** back to `In progress`, attach a
   specific, reproducible failure
 
 Stay scoped to this ticket only. **Never modify implementation code**
