@@ -300,10 +300,9 @@ func TestING001_Edge_WhitespaceURLIsAccepted(t *testing.T) {
 	}
 }
 
-// Flagged edge case: a negative delay is not >0, so no warning is
-// emitted and the value is stored as-is. Spec only defines behavior for
-// >0, so this documents the gap rather than failing.
-func TestING001_Edge_NegativeDelayNoWarning(t *testing.T) {
+// ING-010: negative VLM_REQUEST_DELAY_MS is clamped to 0 and a warning
+// is emitted. This test documents the new expected behavior.
+func TestING001_Edge_NegativeDelayClampsAndWarns(t *testing.T) {
 	setContractEnv(t, map[string]string{
 		"VLM_URL":              "http://vlm.local",
 		"VLM_REQUEST_DELAY_MS": "-5",
@@ -313,11 +312,18 @@ func TestING001_Edge_NegativeDelayNoWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load() error = %v, want nil", err)
 	}
-	if cfg.VLMRequestDelayMS != -5 {
-		t.Errorf("VLMRequestDelayMS = %d, want -5", cfg.VLMRequestDelayMS)
+	if cfg.VLMRequestDelayMS != 0 {
+		t.Errorf("VLMRequestDelayMS = %d, want 0 (clamped from %s)", cfg.VLMRequestDelayMS, "-5")
 	}
-	if got := cfg.Warnings(); len(got) != 0 {
-		t.Errorf("Warnings() = %v, want none for negative delay", got)
+	if got := cfg.Warnings(); len(got) != 1 {
+		t.Errorf("Warnings() = %v, want exactly 1 warning (clamp+warn)", got)
+	} else {
+		w := got[0]
+		for _, want := range []string{"VLM_REQUEST_DELAY_MS", "negative", "0"} {
+			if !strings.Contains(w, want) {
+				t.Errorf("warning %q does not mention %q", w, want)
+			}
+		}
 	}
 }
 

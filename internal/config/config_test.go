@@ -144,6 +144,29 @@ func TestLoad(t *testing.T) {
 			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_TEMPERATURE": "1.0"},
 			wantTemperature: 1.0,
 		},
+		// ING-010: negative VLM_REQUEST_DELAY_MS clamps to 0 and warns.
+		{
+			name:            "negative delay clamps to zero and warns",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_REQUEST_DELAY_MS": "-100"},
+			wantDelayMS:     0,
+			wantWarnings:    1,
+			wantTemperature: 0.4,
+		},
+		{
+			name:            "negative delay with serialize true still clamps and warns",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": "true", "VLM_REQUEST_DELAY_MS": "-5"},
+			wantSerialize:   true,
+			wantDelayMS:     0,
+			wantWarnings:    1,
+			wantTemperature: 0.4,
+		},
+		{
+			name:            "zero delay does not warn",
+			env:             map[string]string{"VLM_URL": "http://vlm", "VLM_REQUEST_DELAY_MS": "0"},
+			wantDelayMS:     0,
+			wantWarnings:    0,
+			wantTemperature: 0.4,
+		},
 	}
 
 	for _, tt := range tests {
@@ -179,6 +202,27 @@ func TestLoad(t *testing.T) {
 				t.Errorf("len(Warnings()) = %d, want %d", got, tt.wantWarnings)
 			}
 		})
+	}
+}
+
+// ING-010: the negative-delay warning must name the variable and state
+// it was treated as 0, not merely be present.
+func TestWarnings_NegativeDelayContent(t *testing.T) {
+	setEnv(t, map[string]string{"VLM_URL": "http://vlm", "VLM_REQUEST_DELAY_MS": "-100"})
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	warnings := cfg.Warnings()
+	if len(warnings) != 1 {
+		t.Fatalf("Warnings() = %v, want exactly 1 warning", warnings)
+	}
+	w := warnings[0]
+	for _, want := range []string{"VLM_REQUEST_DELAY_MS", "negative", "0"} {
+		if !strings.Contains(w, want) {
+			t.Errorf("warning %q does not mention %q", w, want)
+		}
 	}
 }
 

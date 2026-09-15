@@ -24,6 +24,9 @@ type Config struct {
 	// VLMRequestDelayMS is the wait after each VLM response before the
 	// next request. Only meaningful when VLMSerializeRequests is true.
 	VLMRequestDelayMS int
+	// delayWasNegative records that VLM_REQUEST_DELAY_MS was set to a
+	// negative value and clamped to 0, so Warnings can surface it.
+	delayWasNegative bool
 	// VLMTemperature is the sampling temperature passed to the VLM.
 	// Defaults to 0.4 when unset.
 	VLMTemperature float64
@@ -60,6 +63,10 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if delayMS < 0 {
+		cfg.delayWasNegative = true
+		delayMS = 0
+	}
 	cfg.VLMRequestDelayMS = delayMS
 
 	minTemp, maxTemp := 0.0, 1.0
@@ -75,13 +82,17 @@ func Load() (*Config, error) {
 // Warnings returns startup warnings for valid-but-misconfigured
 // combinations the spec says to proceed on rather than hard-fail.
 func (c *Config) Warnings() []string {
+	warnings := []string{}
+	if c.delayWasNegative {
+		warnings = append(warnings, "VLM_REQUEST_DELAY_MS is negative; treated as 0")
+	}
 	if c.VLMRequestDelayMS > 0 && !c.VLMSerializeRequests {
-		return []string{fmt.Sprintf(
+		warnings = append(warnings, fmt.Sprintf(
 			"VLM_REQUEST_DELAY_MS=%d is set but VLM_SERIALIZE_REQUESTS is false; the delay will not be applied",
 			c.VLMRequestDelayMS,
-		)}
+		))
 	}
-	return nil
+	return warnings
 }
 
 func boolEnv(name string, fallback bool) (bool, error) {
