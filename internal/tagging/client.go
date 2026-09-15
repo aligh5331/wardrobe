@@ -213,7 +213,11 @@ func (c *Client) Tag(ctx context.Context, imagePath string) (string, error) {
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/chat/completions", bytes.NewReader(payload))
 	if err != nil {
-		return "", fmt.Errorf("build tagging request: %w", err)
+		// A malformed baseURL (e.g. "not a url", "vlm.local", "http://")
+		// causes NewRequestWithContext to fail. Treat this as an
+		// unreachable VLM so callers get the same distinct error path
+		// they already handle (ING-011).
+		return "", fmt.Errorf("%w: %w", ErrVLMUnreachable, err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {

@@ -218,6 +218,31 @@ func TestTag_MalformedEnvelopeIsNotUnreachable(t *testing.T) {
 	}
 }
 
+// ING-011: a malformed VLM_URL (not a valid URL) must surface as
+// ErrVLMUnreachable when Tag is called, not as a generic request-build
+// error. This matches the behavior for connection-refused/timeout/DNS
+// failures so callers have one distinct error path to handle.
+func TestTag_MalformedURLIsUnreachable(t *testing.T) {
+	malformedURLs := []string{
+		"not a url",
+		"vlm.local",
+		"http://",
+		"ftp://example.com", // wrong scheme for our endpoint but still a URL parse error in context
+	}
+	for _, u := range malformedURLs {
+		t.Run(u, func(t *testing.T) {
+			c := NewClient(u, "")
+			_, err := c.Tag(context.Background(), writeTestImage(t))
+			if err == nil {
+				t.Fatalf("Tag() error = nil for %q, want ErrVLMUnreachable", u)
+			}
+			if !errors.Is(err, ErrVLMUnreachable) {
+				t.Errorf("errors.Is(err, ErrVLMUnreachable) = false for %q, err = %v", u, err)
+			}
+		})
+	}
+}
+
 func TestTag_Concurrent(t *testing.T) {
 	// An overlapping-request detector: if the client had a serialization
 	// queue, the handler would never see more than one request in flight.
