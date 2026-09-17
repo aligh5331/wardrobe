@@ -1,6 +1,114 @@
 # Decisions
 
 Newest first. Each entry: decision, date-ish context, why.
+
+## Env var auto load
+the .env vars are autoloaded using dotenv package. both in server and ingest
+
+## Env var bounds: malformed VLM_URL passes through, unknown booleans error, negative delay clamps to 0
+Settled the ING-009 audit of `VLM_*` env vars for the same "parseable
+but semantically invalid" gap `VLM_TEMPERATURE` had (fixed in ING-008).
+
+- **`VLM_URL`** — no URL-format validation at startup. A malformed value
+  is accepted and surfaces on first use as the ING-002
+  `ErrVLMUnreachable`, rather than a hand-rolled startup URL check.
+  Rationale: that distinct, caller-handled error path already exists, so
+  a second startup failure mode for URLs buys little.
+- **`VLM_SERIALIZE_REQUESTS`** — strict `strconv.ParseBool`. An
+  unrecognized string (`"yes"`, `"ture"`) is a startup error naming the
+  variable, not a silent `false` — a typo'd boolean silently meaning
+  "off" is exactly the class of bug this audit looked for.
+- **`VLM_REQUEST_DELAY_MS`** — a negative value is clamped to `0` and
+  logged as a startup warning; it is neither stored as-is nor a hard
+  error. "Wait a negative time" is meaningless, but a typo shouldn't
+  block startup — warn so it's visible.
+- **`VLM_API_KEY`** — opaque string, no client-side format check; empty
+  means no Authorization header. API keys have no checkable client-side
+  format; validity is determined by the VLM server's response.
+
+## VLM_TEMPERATURE acceptable range: 0.0–1.0, default 0.4
+Bounded below the completion API's technically-wider range (commonly
+0–2) because this project's use is structured JSON tagging, not
+open-ended generation — pushing temperature much past 1.0 mainly
+inflates the malformed-JSON rate that ING-005's retry policy exists
+to handle, not the useful answer-diversity it's meant to produce. 0.0
+stays valid (not banned) for deliberate deterministic runs, but isn't
+the default, since a 0.0 retry mostly just reproduces attempt 1's
+answer rather than giving a genuinely independent second sample.
+Enforced at startup (ING-006) — out-of-range same as non-numeric: a
+startup error naming the valid range.
+
+## Malformed VLM output: retry once at nonzero temperature, then flag
+`05-vlm-tagging-spec.md` originally left "reject and retry" vs. "flag
+for manual review" as an either/or, unresolved. Settled as: retry
+exactly once, then flag if the retry also fails.
+
+VLM sampling temperature is set to a nonzero default (`VLM_TEMPERATURE`,
+default `0.4` — `06-decisions.md`'s usual "reasonable default, tune
+later with evidence" pattern, not a firm number) specifically so the
+retry is a genuinely independent second sample of the model, not a
+near-deterministic repeat of the first answer. A retry at temperature
+0 would mostly just reproduce the same output, defeating the point.
+
+Rejected: no retry (too much manual-review noise for what's often a
+one-off glitch) and retry N>1 times (added complexity and GPU load
+with no evidence yet that more than one retry helps — see below).
+
+Every attempt is logged in full (raw response, parsed JSON if any,
+specific failure type and detail) to `logs/vlm-attempts.jsonl`, keyed
+by a shared `item_id` per photo so attempt 1 and attempt 2 can be
+joined. This was deliberately structured to double as input for the
+VLM calibration idea parked in `later-ideas.md` — comparing two
+independent samples of the same photo is exactly that idea's
+"wrong vs. inconsistent" signal, now collected automatically during
+real use instead of needing a separate offline harness. If real
+flagged-log data later shows retries rarely change the outcome, or
+shows a second retry would help, that's the evidence to revisit this
+policy — not a reason to guess further now.
+
+VLM-unreachable errors (ING-002) are explicitly excluded from this
+policy — a connectivity failure is not a malformed-output case and
+should surface immediately rather than being retried into a flag.
+
+See `backlog/ING-005.md`, `backlog/ING-006.md`, `backlog/ING-007.md`.
+
+## Bash permission checks are per-sub-command, not per-raw-string
+Investigated after observing that chained bash commands (e.g. `echo
+"x" && go vet ./... && go test ./...`) consistently triggered an "ask"
+prompt whenever any single piece lacked a matching permission rule,
+with the approval dialog listing each piece separately.
+
+Confirmed against opencode 1.18.30's actual source
+(`packages/opencode/src/tool/shell.ts`, registered under the `bash`
+tool ID): commands are parsed with a real bash-grammar parser, and
+every distinct sub-command the parser identifies (correctly split
+across `&&`, `||`, `;`, `|`) is checked against permission rules as
+its own independent resource. Chaining does not let an unapproved
+command hide behind an approved one, and a wildcard rule like `"git
+diff*"` cannot match past an operator into an unrelated appended
+command — each side of the chain is evaluated on its own.
+
+A separate, unrelated file in the same codebase
+(`packages/core/src/tool/bash.ts`, a "minimal V2 core" scaffold
+explicitly marked as not yet having this parsing ported in) does treat
+the whole raw command string as a single resource, and matches the
+behavior described in an open opencode GitHub issue. That file is not
+imported anywhere in the running `opencode` package as of this
+version — it does not affect actual behavior. Worth re-checking if
+opencode's "V2" migration referenced in that file's TODOs ever lands
+and replaces the current shell tool.
+
+Practical takeaway logged in `AGENTS.md`: the earlier "never chain
+bash commands" instruction was written on an incorrect security
+assumption (that chaining could bypass a permission boundary) and has
+been corrected to a workflow preference instead — chaining is safe,
+but a single unapproved piece still blocks the whole call, so separate
+calls stay easier to review and fail more predictably. The stronger
+fix for prompt fatigue is `AGENTS.md`'s existing guidance to prefer
+dedicated tools (`list`, `grep`, `read`) over their bash equivalents,
+since those are separate permission categories already set to `allow`
+and never touch the bash arity/parsing path at all.
+
 ## Distribution model: self-hosted single-user, not multi-tenant
 "Fully local" means each install runs entirely on infrastructure its
 owner controls — not that the project is single-person-only. Other

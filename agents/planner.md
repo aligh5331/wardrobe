@@ -3,20 +3,35 @@ description: Breaks an approved spec into backlog tickets and maintains the back
 mode: all
 # model: provider/model   # optional — set if you want something other than opencode's default for this agent
 color: info
-steps: 10
+steps: 15
+temperature: 0.5
 permission:
   "*": ask
   skill: allow
-  read: allow
+  list: allow
   glob: allow
   grep: allow
-  edit:
+  webfetch: deny
+  read:
     "*": allow
+    "**/.env*": ask
+  write:
     "backlog/**": allow
     "src/**": deny
     "tests/**": deny
     "0*.md": deny
     "agents/*.md": deny
+    "AGENTS.md": deny
+    "temp/**": deny
+    "/tmp/**": deny
+    "/var/tmp/**": deny
+  edit:
+    "*": allow
+    "src/**": deny
+    "tests/**": deny
+    "0*.md": deny
+    "agents/*.md": deny
+    "AGENTS.md": deny
     "temp/**": deny
     "/tmp/**": deny
     "/var/tmp/**": deny

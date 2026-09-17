@@ -16,6 +16,9 @@ temp/
 *.out
 vendor/
 
+server
+ingest
+
 # --- Frontend (Vite/React) ---
 frontend/node_modules/
 frontend/dist/
