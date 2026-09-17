@@ -2,6 +2,9 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Env var auto load
+the .env vars are autoloaded using dotenv package. both in server and ingest
+
 ## Env var bounds: malformed VLM_URL passes through, unknown booleans error, negative delay clamps to 0
 Settled the ING-009 audit of `VLM_*` env vars for the same "parseable
 but semantically invalid" gap `VLM_TEMPERATURE` had (fixed in ING-008).
