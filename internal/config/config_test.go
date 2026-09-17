@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -246,6 +247,131 @@ func TestFloatEnv_BoundsAreOptIn(t *testing.T) {
 		t.Setenv("TEST_FLOAT_ENV", "NaN")
 		if _, err := floatEnv("TEST_FLOAT_ENV", 0.4, nil, nil); err == nil {
 			t.Fatal("floatEnv() = nil, want error for NaN even without bounds")
+		}
+	})
+}
+
+// ING-009 decision 2: VLM_SERIALIZE_REQUESTS is parsed strictly with
+// strconv.ParseBool. Only the documented spellings are accepted; unset or
+// empty is false; any other value is a startup error naming the variable
+// — it must never silently evaluate to false.
+func TestSerializeRequests_StrictParseBool(t *testing.T) {
+	trueValues := []string{"1", "t", "T", "true", "TRUE", "True"}
+	for _, raw := range trueValues {
+		t.Run("true-"+raw, func(t *testing.T) {
+			setEnv(t, map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": raw})
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v, want nil for %q", err, raw)
+			}
+			if !cfg.VLMSerializeRequests {
+				t.Errorf("VLMSerializeRequests = false, want true for %q", raw)
+			}
+		})
+	}
+
+	falseValues := []string{"0", "f", "F", "false", "FALSE", "False"}
+	for _, raw := range falseValues {
+		t.Run("false-"+raw, func(t *testing.T) {
+			setEnv(t, map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": raw})
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v, want nil for %q", err, raw)
+			}
+			if cfg.VLMSerializeRequests {
+				t.Errorf("VLMSerializeRequests = true, want false for %q", raw)
+			}
+		})
+	}
+
+	t.Run("empty is false", func(t *testing.T) {
+		setEnv(t, map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": ""})
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.VLMSerializeRequests {
+			t.Error("VLMSerializeRequests = true, want false for empty")
+		}
+	})
+
+	t.Run("unset is false", func(t *testing.T) {
+		setEnv(t, map[string]string{"VLM_URL": "http://vlm"})
+		if err := os.Unsetenv("VLM_SERIALIZE_REQUESTS"); err != nil {
+			t.Fatalf("os.Unsetenv: %v", err)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.VLMSerializeRequests {
+			t.Error("VLMSerializeRequests = true, want false for unset")
+		}
+	})
+
+	for _, raw := range []string{"yes", "ture", "maybe", "2", "TRUE "} {
+		t.Run("invalid-"+strings.ReplaceAll(raw, " ", "_"), func(t *testing.T) {
+			setEnv(t, map[string]string{"VLM_URL": "http://vlm", "VLM_SERIALIZE_REQUESTS": raw})
+			_, err := Load()
+			if err == nil {
+				t.Fatalf("Load() error = nil, want a startup error for %q", raw)
+			}
+			if !strings.Contains(err.Error(), "VLM_SERIALIZE_REQUESTS") {
+				t.Errorf("error %q does not name VLM_SERIALIZE_REQUESTS", err)
+			}
+		})
+	}
+}
+
+// ING-009 decision 4: VLM_API_KEY is opaque. Any non-empty string is
+// accepted verbatim with no format validation — including surrounding
+// whitespace, which must not be trimmed away — and an empty or unset key
+// stays empty so the client sends no Authorization header.
+func TestVLMAPIKey_Opaque(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{name: "plain token", key: "secret-token"},
+		{name: "contains spaces", key: "with spaces"},
+		{name: "arbitrary punctuation", key: "sk-!@#$%^&*()"},
+		{name: "surrounding whitespace preserved", key: "  padded  "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setEnv(t, map[string]string{"VLM_URL": "http://vlm", "VLM_API_KEY": tt.key})
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v, want nil for an opaque key", err)
+			}
+			if cfg.VLMAPIKey != tt.key {
+				t.Errorf("VLMAPIKey = %q, want %q stored verbatim", cfg.VLMAPIKey, tt.key)
+			}
+		})
+	}
+
+	t.Run("empty stays empty", func(t *testing.T) {
+		setEnv(t, map[string]string{"VLM_URL": "http://vlm", "VLM_API_KEY": ""})
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.VLMAPIKey != "" {
+			t.Errorf("VLMAPIKey = %q, want empty", cfg.VLMAPIKey)
+		}
+	})
+
+	t.Run("unset stays empty", func(t *testing.T) {
+		setEnv(t, map[string]string{"VLM_URL": "http://vlm"})
+		if err := os.Unsetenv("VLM_API_KEY"); err != nil {
+			t.Fatalf("os.Unsetenv: %v", err)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v, want nil", err)
+		}
+		if cfg.VLMAPIKey != "" {
+			t.Errorf("VLMAPIKey = %q, want empty", cfg.VLMAPIKey)
 		}
 	})
 }
