@@ -287,16 +287,45 @@ func TestING001_Edge_InvalidValuesFailFast(t *testing.T) {
 	}
 }
 
-// Flagged edge case: a whitespace-only VLM_URL is neither unset nor
-// empty, so Load() accepts it. The spec's "fail fast and loudly"
-// intent suggests whitespace should arguably be treated as missing.
-// Documents current behavior; flagged as a possible follow-up on the
-// ticket rather than failed here (not in the ACs).
-func TestING001_Edge_WhitespaceURLIsAccepted(t *testing.T) {
-	setContractEnv(t, map[string]string{"VLM_URL": "   "})
+// ING-013: a whitespace-only VLM_URL is trimmed and then rejected, same
+// as empty/unset. This supersedes the pre-c356101 expectation that a
+// whitespace value passed the `!= ""` check. Consistent with
+// 07-architecture.md's "startup error if empty" and ING-011 AC3.
+func TestING001_Edge_WhitespaceURLIsRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{name: "spaces", url: "   "},
+		{name: "tabs and newlines", url: "\t\n  \r"},
+	}
 
-	if _, err := config.Load(); err != nil {
-		t.Fatalf("config.Load() error = %v; current behavior accepts whitespace-only VLM_URL", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setContractEnv(t, map[string]string{"VLM_URL": tt.url})
+
+			_, err := config.Load()
+			if err == nil {
+				t.Fatalf("config.Load() = nil error, want rejection of whitespace-only VLM_URL %q", tt.url)
+			}
+			if !strings.Contains(err.Error(), "missing required environment variable: VLM_URL") {
+				t.Errorf("config.Load() error = %q, want it to contain %q", err, "missing required environment variable: VLM_URL")
+			}
+		})
+	}
+}
+
+// ING-013 spec-implied edge: trimming must not corrupt a real URL —
+// surrounding whitespace is stripped and the trimmed value is carried.
+func TestING001_Edge_WhitespacePaddedURLIsTrimmedAndAccepted(t *testing.T) {
+	setContractEnv(t, map[string]string{"VLM_URL": "  http://vlm.local  "})
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load() error = %v, want nil for a padded valid URL", err)
+	}
+	if cfg.VLMURL != "http://vlm.local" {
+		t.Errorf("VLMURL = %q, want %q", cfg.VLMURL, "http://vlm.local")
 	}
 }
 
