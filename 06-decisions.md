@@ -2,6 +2,18 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Ingest→DB wiring: direct call, no provider/service abstraction yet
+`cmd/ingest` calls `internal/store` directly to persist a `Processor.Outcome`
+as a catalog row — no intermediate service layer, queue, or provider
+interface. `cmd/ingest` is currently the only writer, and abstracting for a
+hypothetical second writer (e.g. a future Gin route that lets a user manually
+re-tag or re-submit an item) buys nothing today and adds a layer with no
+second implementation to validate it against.
+
+Revisit when a second writer actually exists — extract the shared
+persistence logic behind an interface at that point, not before. Until then,
+`internal/store`'s exported functions are the only integration surface.
+
 ## Env var auto load
 the .env vars are autoloaded using dotenv package. both in server and ingest
 
