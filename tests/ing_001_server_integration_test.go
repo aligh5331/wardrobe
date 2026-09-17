@@ -8,7 +8,6 @@ package tests
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -37,27 +36,6 @@ func envWith(overrides map[string]string) []string {
 		env = append(env, name+"="+value)
 	}
 	return env
-}
-
-// moduleRoot walks up from the test's working directory (the tests/
-// package dir) to the module root containing go.mod.
-func moduleRoot(t *testing.T) string {
-	t.Helper()
-
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("os.Getwd: %v", err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("could not locate go.mod above test directory")
-		}
-		dir = parent
-	}
 }
 
 // syncBuffer is a concurrency-safe io.Writer for the child process's

@@ -35,19 +35,13 @@ func main() {
 		log.Fatalf("usage: ingest <photo-path> [photo-path...]")
 	}
 
-	client := tagging.NewClient(
-		cfg.VLMURL,
-		cfg.VLMAPIKey,
+	opts := []tagging.Option{
 		tagging.WithTemperature(func() float64 { return cfg.VLMTemperature }),
-	)
-	if cfg.VLMSerializeRequests {
-		client = tagging.NewClient(
-			cfg.VLMURL,
-			cfg.VLMAPIKey,
-			tagging.WithTemperature(func() float64 { return cfg.VLMTemperature }),
-			tagging.WithSerialization(cfg.VLMRequestDelayMS),
-		)
 	}
+	if cfg.VLMSerializeRequests {
+		opts = append(opts, tagging.WithSerialization(cfg.VLMRequestDelayMS))
+	}
+	client := tagging.NewClient(cfg.VLMURL, cfg.VLMAPIKey, opts...)
 
 	processor := tagging.NewProcessor(client)
 

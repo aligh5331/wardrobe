@@ -11,11 +11,33 @@ package tests
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"wardrobe/internal/tagging"
 )
+
+// findSamplePhoto returns the first image in <root>/temp/, the sample
+// garment photo the live E2E test tags.
+func findSamplePhoto(t *testing.T) string {
+	t.Helper()
+
+	dir := filepath.Join(moduleRoot(t), "temp")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read temp/: %v", err)
+	}
+	for _, e := range entries {
+		switch strings.ToLower(filepath.Ext(e.Name())) {
+		case ".jpg", ".jpeg", ".png", ".webp":
+			return filepath.Join(dir, e.Name())
+		}
+	}
+	t.Fatalf("no sample image found in %s", dir)
+	return ""
+}
 
 // AC1 live: a real request against the running VLM returns raw text that
 // ParseTaggingResult accepts, and the resulting typed record matches the

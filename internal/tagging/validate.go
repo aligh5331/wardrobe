@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -115,14 +116,14 @@ func (r TaggingResult) validate() error {
 	if r.Category == "" {
 		return requiredFieldError("category")
 	}
-	if !contains(validCategories, r.Category) {
+	if !slices.Contains(validCategories, r.Category) {
 		return enumFieldError("category", r.Category, validCategories)
 	}
 
 	if r.Subcategory == "" {
 		return requiredFieldError("subcategory")
 	}
-	if !contains(validSubcategories[r.Category], r.Subcategory) {
+	if !slices.Contains(validSubcategories[r.Category], r.Subcategory) {
 		return newValidationError(FailureTypeInvalidEnum, fmt.Sprintf(
 			"invalid category/subcategory pair %q/%q; valid subcategories for %q: %s",
 			r.Category, r.Subcategory, r.Category,
@@ -132,7 +133,7 @@ func (r TaggingResult) validate() error {
 	if r.DominantColor == "" {
 		return requiredFieldError("dominant_color")
 	}
-	if !contains(colorPalette, r.DominantColor) {
+	if !slices.Contains(colorPalette, r.DominantColor) {
 		return enumFieldError("dominant_color", r.DominantColor, colorPalette)
 	}
 
@@ -142,7 +143,7 @@ func (r TaggingResult) validate() error {
 		return requiredFieldError("secondary_colors")
 	}
 	for i, c := range r.SecondaryColors {
-		if !contains(colorPalette, c) {
+		if !slices.Contains(colorPalette, c) {
 			return newValidationError(FailureTypeInvalidEnum, fmt.Sprintf(
 				"secondary_colors[%d] %q is not in the palette; allowed: %s",
 				i, c, strings.Join(colorPalette, ", ")))
@@ -152,21 +153,21 @@ func (r TaggingResult) validate() error {
 	if r.Pattern == "" {
 		return requiredFieldError("pattern")
 	}
-	if !contains(validPatterns, r.Pattern) {
+	if !slices.Contains(validPatterns, r.Pattern) {
 		return enumFieldError("pattern", r.Pattern, validPatterns)
 	}
 
 	if r.WarmthTier == "" {
 		return requiredFieldError("warmth_tier")
 	}
-	if !contains(validWarmthTiers, r.WarmthTier) {
+	if !slices.Contains(validWarmthTiers, r.WarmthTier) {
 		return enumFieldError("warmth_tier", r.WarmthTier, validWarmthTiers)
 	}
 
 	if r.Formality == "" {
 		return requiredFieldError("formality")
 	}
-	if !contains(validFormalities, r.Formality) {
+	if !slices.Contains(validFormalities, r.Formality) {
 		return enumFieldError("formality", r.Formality, validFormalities)
 	}
 
@@ -181,13 +182,4 @@ func requiredFieldError(field string) error {
 func enumFieldError(field, value string, allowed []string) error {
 	return newValidationError(FailureTypeInvalidEnum,
 		fmt.Sprintf("%s %q is not valid; allowed: %s", field, value, strings.Join(allowed, ", ")))
-}
-
-func contains(list []string, value string) bool {
-	for _, v := range list {
-		if v == value {
-			return true
-		}
-	}
-	return false
 }
