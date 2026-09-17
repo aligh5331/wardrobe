@@ -36,7 +36,7 @@ type taxonomy struct {
 func loadTaxonomy(t *testing.T) taxonomy {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "03-taxonomy.md"))
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "03-taxonomy.md"))
 	if err != nil {
 		t.Fatalf("read 03-taxonomy.md: %v", err)
 	}

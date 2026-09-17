@@ -23,10 +23,12 @@ import (
 	"wardrobe/internal/tagging"
 )
 
-// repoRoot locates the module root (dir containing go.mod) from the
+// moduleRoot locates the module root (dir containing go.mod) from the
 // tests/ package working directory, so spec files can be read and
-// compared against instead of hand-copied into the test.
-func repoRoot(t *testing.T) string {
+// compared against instead of hand-copied into the test. It lives in
+// this non-build-tagged file so both the integration and
+// non-integration test files share one copy.
+func moduleRoot(t *testing.T) string {
 	t.Helper()
 
 	dir, err := os.Getwd()
@@ -52,7 +54,7 @@ func repoRoot(t *testing.T) string {
 func specTaggingPrompt(t *testing.T) string {
 	t.Helper()
 
-	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "05-vlm-tagging-spec.md"))
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "05-vlm-tagging-spec.md"))
 	if err != nil {
 		t.Fatalf("read 05-vlm-tagging-spec.md: %v", err)
 	}
