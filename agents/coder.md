@@ -71,7 +71,7 @@ permission:
     "go run *": ask
     "go clean *": deny
     "go install *": deny
-    "go get *": deny
+    "go get *": ask
 ---
 
 # Agent: Coder
