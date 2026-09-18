@@ -14,12 +14,18 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"wardrobe/internal/config"
+	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
 
 	_ "github.com/joho/godotenv/autoload"
 )
+
+// photosDir holds the stored copies of ingested garment photos, relative to
+// the project root (07-architecture.md "Backend").
+const photosDir = "data/photos"
 
 func main() {
 	cfg, err := config.Load()
@@ -34,6 +40,12 @@ func main() {
 	if len(os.Args) < 2 {
 		log.Fatalf("usage: ingest <photo-path> [photo-path...]")
 	}
+
+	st, err := store.Open(store.DefaultDBPath)
+	if err != nil {
+		log.Fatalf("startup: open store: %v", err)
+	}
+	defer st.Close()
 
 	opts := []tagging.Option{
 		tagging.WithTemperature(func() float64 { return cfg.VLMTemperature }),
@@ -84,8 +96,51 @@ func main() {
 				os.Exit(1)
 			}
 			fmt.Println(string(jsonBytes))
+
+			if outcome.Flagged {
+				continue
+			}
+
+			if err := persist(st, outcome); err != nil {
+				log.Printf("persist %s: %v", photoPath, err)
+				os.Exit(1)
+			}
 		}
 	}
+}
+
+// persist copies the tagged photo into data/photos/ and writes the matching
+// catalog row, reusing the item id the tagging processor already generated.
+// It is only called for non-flagged outcomes. A failed copy or insert is
+// returned to the caller; retry/rollback/cleanup is deliberately out of scope
+// for this sprint.
+func persist(st *store.Store, outcome tagging.Outcome) error {
+	if err := os.MkdirAll(photosDir, 0o755); err != nil {
+		return err
+	}
+
+	dest := filepath.Join(photosDir, outcome.ItemID+filepath.Ext(outcome.PhotoPath))
+	data, err := os.ReadFile(outcome.PhotoPath)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(dest, data, 0o644); err != nil {
+		return err
+	}
+
+	return st.Insert(store.Item{
+		ID:              outcome.ItemID,
+		Category:        outcome.Result.Category,
+		Subcategory:     outcome.Result.Subcategory,
+		DominantColor:   outcome.Result.DominantColor,
+		SecondaryColors: outcome.Result.SecondaryColors,
+		Pattern:         outcome.Result.Pattern,
+		WarmthTier:      outcome.Result.WarmthTier,
+		Formality:       outcome.Result.Formality,
+		PhotoPath:       dest,
+		AddedDate:       time.Now(),
+		Notes:           "",
+	})
 }
 
 func expandPaths(arg string) ([]string, error) {

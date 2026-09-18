@@ -1,12 +1,14 @@
 package store
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // DefaultDBPath is the default path for the wardrobe SQLite database.
@@ -40,7 +42,18 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	// GORM's default logger writes to os.Stdout, which would corrupt the
+	// one-JSON-object-per-line stdout of the ingest CLI (ING-012). Keep the
+	// diagnostics but send them to stderr, like the CLI's own log output.
+	gormLogger := logger.New(
+		log.New(os.Stderr, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold: 200 * time.Millisecond,
+			LogLevel:      logger.Warn,
+		},
+	)
+
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: gormLogger})
 	if err != nil {
 		return nil, err
 	}
