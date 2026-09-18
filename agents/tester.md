@@ -3,7 +3,7 @@ description: Writes and runs tests against a ticket's acceptance criteria and th
 mode: all
 # model: provider/model   # optional — set if you want something other than opencode's default for this agent
 color: warning
-steps: 20
+steps: 25
 temperature: 0.2
 permission:
   "*": ask
