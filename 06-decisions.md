@@ -2,6 +2,71 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Testing tooling: Vitest + Testing Library for the frontend, stdlib-first for Go
+
+Current state: the Go suite is stdlib-only (`testing`, `-race`, `httptest`,
+build-tagged process tests that boot the real binary) and is adequate — no
+gap worth adding a framework for. The frontend has no JS test runner at all:
+ING-020's UI acceptance criteria were verified *structurally*, by a
+`node --test` suite reading `App.jsx` and the built bundle, not by rendering
+React in a DOM. That is the actual gap this decision closes.
+
+**Decision — frontend:** adopt **Vitest** with **jsdom** and
+**@testing-library/react** (plus `@testing-library/jest-dom` matchers) as a
+`frontend/` devDependency set.
+
+- Vitest reuses the existing `vite.config.js` / ESM / JSX pipeline — no second
+  transformer or bundler config to keep in sync with the app build.
+- `environment: 'jsdom'` gives React a real DOM to mount in, so a test asserts
+  rendered behavior (one card per item, placeholder on photo error, empty
+  state) instead of grepping source strings.
+- Testing Library queries by role/label/text, so assertions track what the
+  user sees rather than component internals.
+- fetch is stubbed with Vitest's built-in `vi.stubGlobal('fetch', …)`; no mock
+  server dependency for the single `GET /api/items` endpoint.
+- Frontend tests live under `frontend/` (co-located `*.test.jsx`, run via an
+  `npm test` script), because the runner is frontend-scoped. This deliberately
+  does not follow the Go `tests/` layout; each language's tooling owns its
+  tests.
+- Once Vitest covers the same branches, **retire
+  `tests/frontend/ing_020_app_test.mjs`** — keeping both is duplicate
+  maintenance.
+
+**Decision — Go:** stay stdlib-first. No assertion framework is added.
+
+- `testify` is rejected: the suite is intentionally stdlib-consistent, and
+  swapping `t.Fatalf`-style table tests for it is churn, not coverage.
+- `goleak` is rejected for now: the app spawns no long-lived goroutines of its
+  own to leak.
+- One additive test type needs no dependency: a stdlib fuzz target
+  (`testing.F` / `go test -fuzz`) on `ParseTaggingResult` — a parser of
+  untrusted model output is the textbook fuzz case.
+- `govulncheck` is the one non-stdlib Go tool accepted, to scan the (large)
+  Gin/pure-Go-SQLite indirect dependency tree for known CVEs.
+- `golangci-lint` and a coverage gate are left for later; neither is needed to
+  close a current gap.
+
+**Hard constraint:** every addition above is a `devDependency` or a stdlib
+tool — build/test-time only. Nothing ships in the embedded binary or runs at
+runtime, so `00-overview.md`'s fully-local constraint and
+`07-architecture.md`'s single-binary runtime model are untouched.
+
+Rejected alternatives:
+- **Jest** — a second transformer/config alongside Vite for no benefit over
+  Vitest in a Vite project.
+- **Playwright / Cypress (component or E2E)** — heavy for a single-user
+  localhost app, and the Go integration tests already boot the real binary and
+  exercise the embedded SPA + API end to end.
+- **MSW** — overkill for one endpoint; add only if the API surface grows
+  enough that hand-stubbing `fetch` becomes noisy.
+- **happy-dom** — defaults to jsdom; revisit only if the suite is slow enough
+  to matter.
+- **Storybook** — no component library or design system to document.
+
+Follow-ups (to be ticketed after this entry lands): the frontend tooling setup
+(`vitest`/`jsdom`/Testing Library devDeps, `test` config, `npm test`), and the
+retirement of the superseded `tests/frontend/ing_020_app_test.mjs`.
+
 ## Frontend embed placeholder: track `frontend/dist/index.html`, hide local builds with `skip-worktree`
 
 `go:embed` fails to compile when its pattern matches no files, and the Vite
