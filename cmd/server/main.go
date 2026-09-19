@@ -1,13 +1,14 @@
 // Command server runs the wardrobe backend: it validates the VLM/LLM
 // env var contract at startup, opens the local catalog, then serves the
-// read-only API (and, in a later ticket, the embedded frontend) over Gin
-// on a configurable listen address (07-architecture.md).
+// read-only API and the embedded frontend over Gin on a configurable
+// listen address (07-architecture.md).
 package main
 
 import (
 	"flag"
 	"log"
 	"net/http"
+	"wardrobe/frontend"
 	"wardrobe/internal/api"
 	"wardrobe/internal/config"
 	"wardrobe/internal/store"
@@ -35,6 +36,7 @@ func main() {
 	defer st.Close()
 
 	router := api.New(st, api.DefaultPhotosDir)
+	api.ServeFrontend(router, frontend.Dist)
 
 	log.Printf("listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, router))

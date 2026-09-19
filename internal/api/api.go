@@ -3,7 +3,10 @@
 package api
 
 import (
+	"io/fs"
+	"mime"
 	"net/http"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -29,6 +32,47 @@ func New(st *store.Store, photosDir string) *gin.Engine {
 	r.GET("/api/items", listItems(st))
 	r.GET("/api/photos/:filename", servePhoto(photosDir))
 	return r
+}
+
+// ServeFrontend registers the embedded-SPA fallback on r, which must already
+// have its /api/... routes registered (New does that). Gin calls the fallback
+// only when no route matched: unknown /api paths get 404 so they never return
+// HTML, and any other unknown path is served from dist, falling back to
+// index.html so client-side navigation works (07-architecture.md "Runtime
+// model": one executable serves both the API and the UI).
+func ServeFrontend(r *gin.Engine, dist fs.FS) {
+	r.NoRoute(func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if p == "/api" || strings.HasPrefix(p, "/api/") {
+			c.Status(http.StatusNotFound)
+			return
+		}
+
+		name := strings.TrimPrefix(p, "/")
+		if name == "" {
+			name = "index.html"
+		}
+		data, err := fs.ReadFile(dist, name)
+		if err != nil {
+			// Unknown client-side route (or a directory): serve the SPA entry.
+			name = "index.html"
+			data, err = fs.ReadFile(dist, "index.html")
+			if err != nil {
+				c.Status(http.StatusNotFound)
+				return
+			}
+		}
+		c.Data(http.StatusOK, contentType(name, data), data)
+	})
+}
+
+// contentType picks the response type from the file extension, falling back
+// to content sniffing when the extension is unknown.
+func contentType(name string, data []byte) string {
+	if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
+		return ct
+	}
+	return http.DetectContentType(data)
 }
 
 // itemResponse is the JSON shape of one catalog row: the
