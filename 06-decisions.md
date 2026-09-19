@@ -2,6 +2,44 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Frontend embed placeholder: track `frontend/dist/index.html`, hide local builds with `skip-worktree`
+
+`go:embed` fails to compile when its pattern matches no files, and the Vite
+build output (`frontend/dist/`) is gitignored as generated output, so a fresh
+checkout would have nothing for the embed to match. ING-021 therefore commits
+a small placeholder at `frontend/dist/index.html` and keeps it tracked via a
+`.gitignore` negation (`frontend/dist/*` plus `!frontend/dist/index.html` —
+the negation cannot be written against a directory exclusion such as
+`frontend/dist/`, because git will not re-include a file whose parent
+directory is excluded).
+
+The cost is that a real `npm run build` overwrites the tracked placeholder
+with the built entry, which references content-hashed assets under
+`frontend/dist/assets/` that stay gitignored. Committing that built
+`index.html` would ship an entry pointing at assets missing from a fresh
+checkout, so the overwrite must never be committed. Chosen handling: once the
+placeholder is staged/committed, run
+`git update-index --skip-worktree frontend/dist/index.html`. Git then ignores
+the working-tree overwrite — the committed blob remains the placeholder —
+while the working tree can hold the real built entry, so `go build` embeds and
+serves the actual UI locally. Undo with
+`git update-index --no-skip-worktree frontend/dist/index.html` when the
+placeholder content itself needs to change. This is a local index flag only:
+it changes nothing in the committed repository, and a fresh clone that runs
+`npm run build` will see the placeholder appear modified unless it sets the
+same flag.
+
+Rejected alternatives:
+- Track `frontend/dist/.gitkeep` with Vite `build.emptyOutDir: false`:
+  permanently clean `git status`, but a fresh checkout then has no
+  `index.html`, so `/` 404s instead of showing the "frontend not built"
+  placeholder, and it still needs a non-default Vite setting.
+- Commit the real built `index.html`: broken on a fresh checkout, since it
+  references hashed assets that are not in git.
+- Commit all of `frontend/dist/`: contradicts `07-architecture.md`'s
+  "generated, gitignored" build output and puts build churn in history for no
+  benefit.
+
 ## Ingest→DB wiring: direct call, no provider/service abstraction yet
 `cmd/ingest` calls `internal/store` directly to persist a `Processor.Outcome`
 as a catalog row — no intermediate service layer, queue, or provider
