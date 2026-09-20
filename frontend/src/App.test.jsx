@@ -133,4 +133,52 @@ describe('App grid page (ING-020 behavior, rendered DOM)', () => {
     expect(screen.getByText('Shirt')).toBeInTheDocument()
     expect(screen.getByText('linen')).toBeInTheDocument()
   })
+
+  // ING-025 — the assertions below were ported from the retired structural
+  // suite so removing it loses no coverage. They assert the same branches
+  // through the rendered DOM.
+  it.each([
+    ['a non-OK HTTP response', () => stubFetch([], { ok: false, status: 500 })],
+    [
+      'a network failure',
+      () => vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline'))),
+    ],
+  ])('shows the error state on %s', async (_label, arrange) => {
+    arrange()
+
+    render(<App />)
+
+    expect(await screen.findByText('Could not load the catalog.')).toBeInTheDocument()
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    expect(
+      screen.queryByText('No items cataloged yet. Run the ingestion pipeline to add garments.'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('falls back to the empty state when a successful response body is not an array', async () => {
+    stubFetch({ not: 'an array' })
+
+    render(<App />)
+
+    expect(
+      await screen.findByText('No items cataloged yet. Run the ingestion pipeline to add garments.'),
+    ).toBeInTheDocument()
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0)
+    expect(screen.queryByText('Could not load the catalog.')).not.toBeInTheDocument()
+  })
+
+  it('is read-only: only GETs /api/items and renders no write controls', async () => {
+    const fetchMock = stubFetch([makeItem()])
+
+    const { container } = render(<App />)
+
+    await screen.findAllByRole('listitem')
+
+    // Exactly one call, with the bare URL only — no RequestInit means no
+    // method/POST/PUT/DELETE/PATCH write request.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/items')
+    // No interactive write/edit surface is rendered.
+    expect(container.querySelectorAll('button, form, input, select, textarea')).toHaveLength(0)
+  })
 })
