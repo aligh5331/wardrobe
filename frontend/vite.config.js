@@ -12,4 +12,10 @@ export default defineConfig({
       '/api': 'http://localhost:8080',
     },
   },
+  // Vitest (06-decisions.md "Testing tooling"): render components in a real DOM
+  // and load the jest-dom matchers once per test file. Reuses this Vite config.
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/setupTests.js'],
+  },
 })
