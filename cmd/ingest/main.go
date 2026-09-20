@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"wardrobe/internal/config"
@@ -163,7 +164,7 @@ func expandPaths(arg string) ([]string, error) {
 		if entry.IsDir() {
 			continue
 		}
-		ext := filepath.Ext(entry.Name())
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
 		if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" {
 			paths = append(paths, filepath.Join(arg, entry.Name()))
 		}
