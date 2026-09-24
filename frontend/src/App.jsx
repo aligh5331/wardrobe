@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ItemAddForm from './ItemAddForm.jsx'
 import ItemEditForm from './ItemEditForm.jsx'
 
 // Grid of one card per cataloged garment, plus the ING-033 edit entry point.
@@ -104,6 +105,8 @@ export default function App() {
   const [status, setStatus] = useState('loading')
   // null, or { id, status: 'loading'|'ready'|'error', item, taxonomy, saving, error }.
   const [edit, setEdit] = useState(null)
+  // ING-034 — the add flow (upload → draft → confirm) is open.
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -186,9 +189,29 @@ export default function App() {
 
   const closeEdit = () => setEdit(null)
 
+  // A confirmed draft was persisted: show the created item in the grid
+  // (07-architecture.md "Catalog write API": POST /api/items returns the
+  // created row in the same shape the grid renders).
+  const saveNew = (created) => {
+    setItems((list) => [...list, created])
+    setStatus('ready')
+    setAdding(false)
+  }
+
   return (
     <main className="mx-auto max-w-6xl p-6">
-      <h1 className="mb-6 text-2xl font-bold text-gray-900">Wardrobe</h1>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">Wardrobe</h1>
+        <button
+          type="button"
+          onClick={() => setAdding((open) => !open)}
+          className="rounded bg-gray-900 px-3 py-1 text-sm text-white"
+        >
+          Add garment
+        </button>
+      </div>
+
+      {adding && <ItemAddForm onSaved={saveNew} onCancel={() => setAdding(false)} />}
 
       {status === 'loading' && <p className="text-gray-500">Loading…</p>}
 
