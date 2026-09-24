@@ -1,7 +1,7 @@
-// Package api exposes the catalog read surface plus the single-item edit
-// write routes (GET/PUT /api/items/:id), photo, and taxonomy HTTP surface
-// over Gin (07-architecture.md "Backend", "Catalog write API", "Full
-// project structure").
+// Package api exposes the catalog read surface plus the write routes
+// (POST /api/items/photo, POST /api/items, GET/PUT /api/items/:id), photo,
+// and taxonomy HTTP surface over Gin (07-architecture.md "Backend",
+// "Catalog write API", "Full project structure").
 package api
 
 import (
@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"wardrobe/internal/catalog"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
 )
@@ -75,11 +76,12 @@ const dateFormat = "2006-01-02"
 // New builds the Gin engine with the approved catalog routes: the read
 // routes (GET /api/items, /api/items/:id, /api/photos/:filename,
 // /api/taxonomy), the single-item edit write route (PUT /api/items/:id),
-// and the create draft route (POST /api/items/photo). No delete route
-// exists in Phase 1 (07-architecture.md "Catalog write API"). photosDir is
-// the directory photo requests are served from; cmd/server passes
-// DefaultPhotosDir, and tests may point it at a temp directory so they
-// never touch the real data/photos/.
+// and the create routes (POST /api/items/photo and POST /api/items). No
+// delete route exists in Phase 1 (07-architecture.md "Catalog write API").
+// photosDir is the directory photo requests are served from and the create
+// route moves approved uploads into; cmd/server passes DefaultPhotosDir,
+// and tests may point it at a temp directory so they never touch the real
+// data/photos/.
 func New(st *store.Store, photosDir string, opts ...Option) *gin.Engine {
 	cfg := &config{stagingDir: DefaultStagingDir}
 	for _, opt := range opts {
@@ -91,6 +93,7 @@ func New(st *store.Store, photosDir string, opts ...Option) *gin.Engine {
 	r.GET("/api/items", listItems(st))
 	r.GET("/api/items/:id", getItem(st))
 	r.PUT("/api/items/:id", updateItem(st))
+	r.POST("/api/items", createItem(st, photosDir, cfg.stagingDir))
 	r.POST("/api/items/photo", uploadPhoto(cfg.processor, cfg.stagingDir))
 	r.GET("/api/photos/:filename", servePhoto(photosDir))
 	r.GET("/api/taxonomy", taxonomy)
@@ -263,6 +266,130 @@ func updateItem(st *store.Store) gin.HandlerFunc {
 		}
 		c.JSON(http.StatusOK, toResponse(updated))
 	}
+}
+
+// errInvalidPhotoRef marks a client-supplied photo reference that is not a
+// plain basename naming the item id. It is a request error (400), never a
+// filesystem path.
+var errInvalidPhotoRef = errors.New("invalid photo reference")
+
+// createItemRequest is the POST /api/items body: the draft's identity
+// (item_id, and optionally the photo_ref the upload returned) plus the
+// seven tagging fields of 04-data-schema.md and optional notes. id,
+// added_date, and photo_path are not decoded, so a body carrying them can
+// never reach the store — they are server-owned on create
+// (04-data-schema.md "Write-path rules (interactive create/edit)").
+type createItemRequest struct {
+	ItemID   string `json:"item_id"`
+	PhotoRef string `json:"photo_ref"`
+	tagging.TaggingResult
+	Notes string `json:"notes"`
+}
+
+// createItem persists a confirmed draft: it locates the staged upload the
+// upload route produced, validates the corrected record through
+// tagging.ParseTaggingResult (the same tables a model output goes through,
+// so the API keeps no second enum copy), then moves the photo and inserts
+// the row through the shared, rollback-safe catalog.Create — a second
+// caller, not a second implementation (06-decisions.md "Second catalog
+// writer exists", "Catalog writes must not leave orphan photos or dangling
+// rows").
+//
+// A field-validation failure is 400 naming the offending field and leaves
+// the staged upload intact so the draft stays correctable; it is not a
+// failed create (ticket "Staged-file lifetime"). An id with no staged
+// upload is 404. Any failure from catalog.Create (photo move or row insert)
+// surfaces as 500 with the staged upload removed and no orphan in
+// data/photos/. On success both the staged file and the response contract
+// converge: the staged file is gone and the body is the created item in the
+// same shape GET /api/items/:id returns.
+func createItem(st *store.Store, photosDir, stagingDir string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body createItemRequest
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body: " + err.Error()})
+			return
+		}
+
+		// Trust boundary: the client-supplied reference is re-validated as a
+		// plain basename before it is ever joined to the staging dir
+		// (ING-031 review note; symmetry with validPhotoName).
+		if !validPhotoName(body.ItemID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid item_id"})
+			return
+		}
+		stagedPath, err := stagedPhotoPath(stagingDir, body.ItemID, body.PhotoRef)
+		switch {
+		case errors.Is(err, errInvalidPhotoRef):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid photo_ref"})
+			return
+		case errors.Is(err, os.ErrNotExist):
+			c.JSON(http.StatusNotFound, gin.H{"error": "staged photo not found"})
+			return
+		case err != nil:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to locate staged photo"})
+			return
+		}
+
+		raw, err := json.Marshal(body.TaggingResult)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to validate item"})
+			return
+		}
+		if _, err := tagging.ParseTaggingResult(string(raw)); err != nil {
+			// Validation, not a failed create: the staged upload stays so
+			// the draft can be corrected and resubmitted.
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		item, err := catalog.Create(st, photosDir, body.ItemID, stagedPath, body.TaggingResult, body.Notes)
+		if err != nil {
+			// A failed create removes the staged upload; catalog.Create has
+			// already rolled back any photo copy it made.
+			_ = os.Remove(stagedPath)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create item"})
+			return
+		}
+		_ = os.Remove(stagedPath)
+		c.JSON(http.StatusCreated, toResponse(item))
+	}
+}
+
+// stagedPhotoPath resolves the staged upload for id under stagingDir. The
+// client-supplied ref is used only after being re-validated as a plain
+// basename that names the item id — never as a path component — so it
+// cannot escape stagingDir (06-decisions.md "Photo upload trust boundary").
+// When ref is empty the server locates its own server-named <id>.<ext>. It
+// returns errInvalidPhotoRef for a malformed reference, os.ErrNotExist when
+// no staged upload matches, and any other filesystem error unchanged.
+func stagedPhotoPath(stagingDir, id, ref string) (string, error) {
+	if ref != "" {
+		if !validPhotoName(ref) || !strings.HasPrefix(ref, id+".") {
+			return "", errInvalidPhotoRef
+		}
+		ext := strings.ToLower(filepath.Ext(ref))
+		if !acceptedPhotoExts[ext] {
+			return "", errInvalidPhotoRef
+		}
+		staged := filepath.Join(stagingDir, id+ext)
+		if _, err := os.Stat(staged); err != nil {
+			return "", err
+		}
+		return staged, nil
+	}
+
+	entries, err := os.ReadDir(stagingDir)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if acceptedPhotoExts[ext] && e.Name() == id+ext {
+			return filepath.Join(stagingDir, e.Name()), nil
+		}
+	}
+	return "", os.ErrNotExist
 }
 
 // draftResponse is POST /api/items/photo's success body: the seven
