@@ -38,6 +38,18 @@ UI"). All routes are local, no auth:
 - Staged uploads live in a gitignored runtime staging directory under `data/`
   and are removed on save or failed create (`06-decisions.md`).
 
+### Taxonomy read route (create/edit forms)
+
+`GET /api/taxonomy` returns the closed vocabulary the forms must offer —
+categories with their valid subcategories, the color palette, patterns, warmth
+tiers, and formality — derived from the same tables `internal/tagging`
+validates against. It exists so the browser does not hand-duplicate
+`03-taxonomy.md` (`06-decisions.md`).
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/taxonomy` | closed enum vocabulary for the create/edit forms |
+
 ## Frontend
 - **Framework:** React, built with Vite (SPA, not Next.js — no SSR/API
   routes needed for a single-user localhost app)

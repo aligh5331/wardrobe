@@ -2,6 +2,21 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Taxonomy exported to the browser via `GET /api/taxonomy`, not a bundled copy
+
+The interactive create/edit forms need the valid enum values, but
+`03-taxonomy.md` is a repo spec, not shipped to the frontend, and
+`07-architecture.md` exposed no taxonomy route. Rather than duplicating the
+enums into the JS bundle, the backend serves them: `GET /api/taxonomy` returns
+categories with their valid subcategories, the color palette, patterns, warmth
+tiers, and formality — derived from the same tables `internal/tagging`
+validates against, so the client and server cannot drift and a future taxonomy
+change reaches the forms without a frontend edit.
+
+Rejected: a generated or hand-copied client-side enum module — `03-taxonomy.md`
+is already mirrored into `internal/tagging/validate.go`; a third copy is the
+one that silently goes stale.
+
 ## Interactive catalog create/edit UI: local VLM draft, human confirm, shared persistence
 
 Phase 1's catalog gains a second, UI-driven writer. Two operations:
