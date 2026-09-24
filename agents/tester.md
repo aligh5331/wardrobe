@@ -23,6 +23,11 @@ permission:
     "tests/**": allow
     "test/**": allow
     "backlog/**": allow
+    "frontend/src/**": deny
+    "frontend/**/*.test.jsx": allow
+    "frontend/**/*.test.js": allow
+    "frontend/**/*.test.mjs": allow
+    "frontend/**/setupTests.*": allow
     "src/**": deny
     "0*.md": deny
     "agents/*.md": deny
@@ -34,6 +39,11 @@ permission:
     "tests/**": allow
     "test/**": allow
     "backlog/**": allow
+    "frontend/src/**": deny
+    "frontend/**/*.test.jsx": allow
+    "frontend/**/*.test.js": allow
+    "frontend/**/*.test.mjs": allow
+    "frontend/**/setupTests.*": allow
     "src/**": deny
     "0*.md": deny
     "agents/*.md": deny
@@ -71,6 +81,12 @@ permission:
     "go clean *": deny
     "go install *": deny
     "go get *": deny
+    "npm ci": allow
+    "npm install": allow
+    "npm test": allow
+    "npm run build": allow
+    "npm run test": allow
+    "npx vitest *": allow
 ---
 
 # Agent: Tester
@@ -115,8 +131,11 @@ specific reproducible failure attached.
 ## Working conventions
 - Pass/fail results and evidence go on `backlog/<TICKET-ID>.md`, per this
   role's Definition of done above.
-- Test files go under `tests/` (or `test/`) — this agent has no edit
-  access to anything under `src/`.
+- Test files go under `tests/` (or `test/`), or co-located under
+  `frontend/` as `*.test.jsx` (the frontend runner is frontend-scoped —
+  `06-decisions.md`). This agent has no edit access to implementation
+  code: `src/**` and `frontend/src/**` are denied, except co-located
+  frontend test files and `setupTests.*`.
 - If a test needs scratch space (fixtures, generated sample images,
   intermediate output), ask first. If approved, use
   `<project root>/temp/` — never the OS `/tmp` directory or any path

@@ -43,10 +43,11 @@ Stay scoped to this ticket only. **Never modify implementation code**
 
 - **read** — read the contents of an existing file. Use instead of
   `cat`/`less` via bash.
-- **write** — create a new test file under `tests/` or `test/`. Use
-  instead of `touch` + `cat > file <<EOF` via bash.
-- **edit** — modify an existing test file in place. Use instead of
-  `sed -i`/`echo >>` via bash.
+- **write** — create a new test file under `tests/`, `test/`, or a
+  co-located frontend test (`frontend/**/*.test.jsx`). Use instead of
+  `touch` + `cat > file <<EOF` via bash.
+- **edit** — modify an existing test file in place (including co-located
+  frontend tests). Use instead of `sed -i`/`echo >>` via bash.
 - **glob** — find files by name/path pattern. Use instead of `find`
   via bash.
 - **grep** — search file contents by pattern. Use instead of
@@ -60,9 +61,11 @@ Stay scoped to this ticket only. **Never modify implementation code**
   relevant.
 - **bash** — allowed, but narrowly: read-only git commands (`status`,
   `diff`, `log`, `show`, `blame`, `branch`), `go build`/`go vet`/`go
-  test`. Everything else — `git push`/`merge`/`rebase`/`reset`, `go
-  install`/`get`/`clean`, `rm -rf`, `sudo` — is denied outright.
-  **One command per bash call, never chained with `&&`/`;`/`|`.**
+  test`, and the frontend test toolchain: `npm ci`/`npm install`, `npm
+  test`, `npm run build`/`npm run test`, `npx vitest`. Everything else —
+  `git push`/`merge`/`rebase`/`reset`, `go install`/`get`/`clean`, `rm
+  -rf`, `sudo` — is denied outright. **One command per bash call, never
+  chained with `&&`/`;`/`|`.**
 
 ## Tools NOT available to you
 
@@ -70,8 +73,10 @@ Stay scoped to this ticket only. **Never modify implementation code**
 - **task** — denied. Never spawn or delegate to another agent.
 - **external_directory** — denied. Never read or write outside this
   project's root.
-- **write/edit on `src/**`** — denied. You verify Coder's output, you
-  don't touch it.
+- **write/edit on implementation code** — denied on `src/**` and
+  `frontend/src/**`, except co-located frontend test files
+  (`frontend/**/*.test.jsx`) and `frontend/**/setupTests.*`, which are
+  allowed. You verify Coder's output, you don't touch implementation.
 
 ## Hard rules (same ones in AGENTS.md, restated here since this loads directly into your context on invocation)
 

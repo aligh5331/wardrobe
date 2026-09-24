@@ -72,6 +72,13 @@ permission:
     "go clean *": deny
     "go install *": deny
     "go get *": ask
+    "npm ci": allow
+    "npm install": allow
+    "npm test": allow
+    "npm run build": allow
+    "npm run test": allow
+    "npm run dev": ask
+    "npx vitest *": allow
 ---
 
 # Agent: Coder
