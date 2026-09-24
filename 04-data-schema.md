@@ -16,6 +16,14 @@ One row per garment. All enum fields validate against `03-taxonomy.md`.
 | `added_date` | date | when cataloged |
 | `notes` | string, optional | free text, not used by the recommender |
 
+## Write-path rules (interactive create/edit)
+
+- `id` is generated once at create and is immutable.
+- `added_date` is set once at create and is immutable on edit.
+- `notes` is optional and editable.
+- All other fields are editable on an existing item; the photo and
+  `photo_path` are not replaced in Phase 1 (`06-decisions.md`).
+
 ## Resolved
 - `subcategory` is **required** — every tagging result must include a
   valid subcategory for its category, no null.

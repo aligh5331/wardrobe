@@ -18,6 +18,26 @@ process. The Vite frontend build is embedded into the Go binary with
 - **Image storage:** filesystem, under `data/photos/`; path stored in
   the item's `photo_path` field per `04-data-schema.md`
 
+### Catalog write API (interactive create/edit)
+
+The UI write path from `06-decisions.md` ("Interactive catalog create/edit
+UI"). All routes are local, no auth:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/items/photo` | multipart photo upload; stages the file, runs the local VLM tagging pipeline, returns a **non-persisted draft** (tagging fields + a photo reference) |
+| `POST` | `/api/items` | persist a confirmed draft: move the staged photo into `data/photos/`, insert the catalog row |
+| `GET` | `/api/items/:id` | one item, for the edit form |
+| `PUT` | `/api/items/:id` | update the mutable fields (all tagging fields + `notes`) |
+
+- Validation reuses the taxonomy tables already in `internal/tagging`
+  (`ParseTaggingResult`): an invalid field is `400` with the field named, an
+  unknown id is `404`.
+- `id`, `added_date`, and the photo are immutable via `PUT`.
+- No delete route in Phase 1.
+- Staged uploads live in a gitignored runtime staging directory under `data/`
+  and are removed on save or failed create (`06-decisions.md`).
+
 ## Frontend
 - **Framework:** React, built with Vite (SPA, not Next.js — no SSR/API
   routes needed for a single-user localhost app)
@@ -67,6 +87,7 @@ wardrobe/
 │
 ├── internal/
 │   ├── tagging/                 # VLM client, serialization, taxonomy validation
+│   ├── catalog/                 # shared photo+row persistence (CLI + API)
 │   ├── store/                   # GORM models + sqlite access
 │   └── api/                     # Gin handlers
 │
@@ -78,7 +99,8 @@ wardrobe/
 │
 ├── data/                        # runtime, personal, gitignored entirely
 │   ├── wardrobe.db              # your actual catalog + your garment photos —
-│   └── photos/                  # never belongs in git history
+│   ├── photos/                  # never belongs in git history
+│   └── ingest-staging/          # transient UI uploads; removed on save/failure
 │
 ├── logs/                        # runtime logs (startup warnings — e.g. the
 │   └── ...                      # VLM_REQUEST_DELAY_MS misconfig warning —

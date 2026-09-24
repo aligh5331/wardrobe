@@ -2,6 +2,74 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Interactive catalog create/edit UI: local VLM draft, human confirm, shared persistence
+
+Phase 1's catalog gains a second, UI-driven writer. Two operations:
+
+- **Create** — the user uploads one garment photo in the browser. The backend
+  runs the *same* local tagging pipeline (`05-vlm-tagging-spec.md`,
+  Qwen3-VL-8B via llama.cpp) and returns the tagged result as a **draft that
+  is not persisted**. The user reviews and may correct every tagging field,
+  then saves; only then is the photo moved into `data/photos/` and the row
+  written.
+- **Edit** — every tagging field plus `notes` may be corrected on an existing
+  item. `id`, `added_date`, and the photo are immutable in this feature; there
+  is no re-tag and no photo replacement.
+
+Why now: `05-vlm-tagging-spec.md` already expects "some manual correction
+early on" (weaker subcategory accuracy, pattern catch-all). Correcting via
+`cmd/ingest` means re-running inference on a photo when only a label is wrong;
+the UI edit path corrects labels without touching the photo or the model.
+
+Constraints unchanged: same base model, no fine-tuning, fully local, one photo
+per garment, single embedded binary. The VLM call itself is unchanged — only
+its trigger and the fact that a human confirms before persist.
+
+**Not in scope:** delete, photo replacement/re-crop, re-tagging an existing
+item, bulk import, multi-user/auth. The API surface is specified in
+`07-architecture.md` "Catalog write API".
+
+## Second catalog writer exists: extract shared persistence out of `cmd/ingest`
+
+The earlier "Ingest→DB wiring: direct call, no provider/service abstraction
+yet" entry deferred extraction until a second writer existed, naming a future
+Gin route as the example. That condition is now met (the interactive
+create/edit UI above), so the photo-copy + row-insert logic currently inline in
+`cmd/ingest/main.go`'s `persist` moves to one shared internal package used by
+both the CLI and the API. There is still exactly one persistence
+implementation; the API route is a second *caller*, not a second copy.
+
+Rejected: duplicating the logic in the handler (two copies that can drift); a
+queue/service abstraction (no queue, no worker, one local process).
+
+## Catalog writes must not leave orphan photos or dangling rows
+
+Resolves the gap logged as `backlog/ING-028.md`. A create performs two writes —
+the photo file and the catalog row — and must not leave a half-written result
+when either fails:
+
+- A failed create leaves **no orphan photo** in `data/photos/` and **no row**
+  pointing at a missing photo.
+- The failure is explicitly recoverable: re-running the create cannot leave
+  duplicate state (the item id comes from the tagging pipeline, so a retry uses
+  a fresh id and a failed attempt's residue is removed).
+
+Implementation mechanism (which step commits first, staging location, cleanup
+on each failure branch) is a ticket-level detail; the behavior above is the
+contract. This closes ING-028's "behavior to be decided" and makes it
+ticketable.
+
+## Photo upload trust boundary: fixed types, size cap, server-derived filename
+
+The upload endpoint is the first client-supplied file surface. Accepted
+extensions are the same set the CLI already ingests — `.jpg`, `.jpeg`, `.png`,
+`.webp` — and each upload is capped at 20 MiB. The stored name is always
+server-derived (`<item_id>.<ext>`); the client-supplied filename is never used
+as a path, so it cannot escape `data/photos/`. Serving already rejects
+traversal via `validPhotoName` (`internal/api/api.go`). Staged uploads live
+under a gitignored runtime staging directory and are removed after a successful
+save or a failed create.
+
 ## Testing tooling: Vitest + Testing Library for the frontend, stdlib-first for Go
 
 Current state: the Go suite is stdlib-only (`testing`, `-race`, `httptest`,
