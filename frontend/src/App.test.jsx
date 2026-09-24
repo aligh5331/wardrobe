@@ -167,7 +167,11 @@ describe('App grid page (ING-020 behavior, rendered DOM)', () => {
     expect(screen.queryByText('Could not load the catalog.')).not.toBeInTheDocument()
   })
 
-  it('is read-only: only GETs /api/items and renders no write controls', async () => {
+  // ING-033 added the edit entry point, so this is no longer "no write
+  // controls at all": loading the grid still only GETs /api/items and renders
+  // no write form; the edit form appears only after the user activates edit
+  // (that flow is covered by ing_033_edit.test.jsx).
+  it('loads read-only: only GETs /api/items and renders no write form until edit is activated', async () => {
     const fetchMock = stubFetch([makeItem()])
 
     const { container } = render(<App />)
@@ -178,7 +182,8 @@ describe('App grid page (ING-020 behavior, rendered DOM)', () => {
     // method/POST/PUT/DELETE/PATCH write request.
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledWith('/api/items')
-    // No interactive write/edit surface is rendered.
-    expect(container.querySelectorAll('button, form, input, select, textarea')).toHaveLength(0)
+    // The edit entry point exists, but no write form is rendered yet.
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    expect(container.querySelectorAll('form, input, select, textarea')).toHaveLength(0)
   })
 })
