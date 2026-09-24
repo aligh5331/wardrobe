@@ -73,10 +73,20 @@ func NewProcessor(client *Client, opts ...ProcessorOption) *Processor {
 // response-envelope failure, or a failure to write the attempt log. Per
 // 06-decisions.md this case is not retried and not flagged.
 func (p *Processor) Process(ctx context.Context, photoPath string) (Outcome, error) {
-	itemID, err := newItemID()
+	itemID, err := NewItemID()
 	if err != nil {
 		return Outcome{}, fmt.Errorf("generate item id: %w", err)
 	}
+	return p.ProcessWithID(ctx, itemID, photoPath)
+}
+
+// ProcessWithID is Process with a caller-supplied item id. It exists so a
+// caller that must name a file after the record's id before the VLM runs
+// (the interactive upload stages <item_id>.<ext>, 07-architecture.md
+// "Catalog write API") can reuse the same id in the eventual catalog row
+// instead of generating a second one. It has exactly Process's
+// retry-once / flag / unreachable behavior; only the id source differs.
+func (p *Processor) ProcessWithID(ctx context.Context, itemID, photoPath string) (Outcome, error) {
 	out := Outcome{ItemID: itemID, PhotoPath: photoPath}
 
 	const maxAttempts = 2
@@ -139,10 +149,12 @@ func failureInfo(err error) (failureType, detail string) {
 	return "unknown", err.Error()
 }
 
-// newItemID returns a random UUIDv4 to link a photo's attempts in the log.
+// NewItemID returns a random UUIDv4 to link a photo's attempts in the log.
 // 04-data-schema.md types the wardrobe item's id as a uuid; generating it at
-// ingestion means the eventual store row can reuse the same id.
-func newItemID() (string, error) {
+// ingestion means the eventual store row can reuse the same id. Callers that
+// need the id before processing (e.g. to stage a server-named upload file)
+// use this with ProcessWithID; Process itself calls it at the start.
+func NewItemID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err

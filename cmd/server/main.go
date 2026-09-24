@@ -12,6 +12,7 @@ import (
 	"wardrobe/internal/api"
 	"wardrobe/internal/config"
 	"wardrobe/internal/store"
+	"wardrobe/internal/tagging"
 
 	_ "github.com/joho/godotenv/autoload" // .env autoload
 )
@@ -35,9 +36,24 @@ func main() {
 	}
 	defer st.Close()
 
-	router := api.New(st, api.DefaultPhotosDir)
+	router := api.New(st, api.DefaultPhotosDir, api.WithTagging(taggingProcessor(cfg), api.DefaultStagingDir))
 	api.ServeFrontend(router, frontend.Dist)
 
 	log.Printf("listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, router))
+}
+
+// taggingProcessor builds the local VLM tagging pipeline from config exactly
+// as cmd/ingest does: same client options (temperature source, optional
+// serialization) and same retry-once Processor. The upload route reuses it
+// with no second model or policy (05-vlm-tagging-spec.md "Interactive
+// tagging (web UI)").
+func taggingProcessor(cfg *config.Config) *tagging.Processor {
+	opts := []tagging.Option{
+		tagging.WithTemperature(func() float64 { return cfg.VLMTemperature }),
+	}
+	if cfg.VLMSerializeRequests {
+		opts = append(opts, tagging.WithSerialization(cfg.VLMRequestDelayMS))
+	}
+	return tagging.NewProcessor(tagging.NewClient(cfg.VLMURL, cfg.VLMAPIKey, opts...))
 }

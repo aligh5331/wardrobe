@@ -4,9 +4,9 @@
 // returns stored bytes (rejecting traversal), and exactly the approved
 // route set is registered (AC7's assertion grew with the approved write
 // routes: ING-036 added GET /api/taxonomy, ING-030 added GET/PUT
-// /api/items/:id — still no delete). These tests exercise the exported
-// wardrobe/internal/api surface; implementation code is never touched
-// from here.
+// /api/items/:id, ING-031 added POST /api/items/photo — still no delete).
+// These tests exercise the exported wardrobe/internal/api surface;
+// implementation code is never touched from here.
 package tests
 
 import (
@@ -312,21 +312,23 @@ func TestING019_AC6_RejectsTraversalFilenames(t *testing.T) {
 // inspected / Then exactly the approved route set exists (07-architecture.md
 // "Backend" + "Catalog write API"): the read routes GET /api/items,
 // GET /api/items/:id, GET /api/photos/:filename, GET /api/taxonomy, plus
-// the single approved write route PUT /api/items/:id. No delete route and
-// no unapproved method exists — any extra or missing route fails here.
-// (Assertion converted from the read-only set by ING-030's test note;
-// write-route tickets extend the set only when their route is approved.)
+// the approved write routes PUT /api/items/:id and POST /api/items/photo.
+// No delete route and no unapproved method exists — any extra or missing
+// route fails here. (Assertion converted from the read-only set by ING-030's
+// test note; write-route tickets extend the set only when their route is
+// approved. ING-031 added POST /api/items/photo.)
 func TestING019_AC7_OnlyReadOnlyRoutes(t *testing.T) {
 	engine, _, _ := newING019API(t)
 
 	routes := engine.Routes()
-	if len(routes) != 5 {
-		t.Fatalf("registered routes = %d, want exactly 5: %v", len(routes), ing019RouteNames(routes))
+	if len(routes) != 6 {
+		t.Fatalf("registered routes = %d, want exactly 6: %v", len(routes), ing019RouteNames(routes))
 	}
 	want := map[string]bool{
 		"GET /api/items":            false,
 		"GET /api/items/:id":        false,
 		"PUT /api/items/:id":        false,
+		"POST /api/items/photo":     false,
 		"GET /api/photos/:filename": false,
 		"GET /api/taxonomy":         false,
 	}

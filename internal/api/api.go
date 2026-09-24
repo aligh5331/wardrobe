@@ -7,9 +7,12 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"mime"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -23,24 +26,72 @@ import (
 // (07-architecture.md "Backend": image storage under data/photos/).
 const DefaultPhotosDir = "data/photos"
 
+// DefaultStagingDir is where interactive uploads are staged until a human
+// confirms the draft (07-architecture.md "Full project structure",
+// "Catalog write API").
+const DefaultStagingDir = "data/ingest-staging"
+
+// maxPhotoBytes caps one uploaded photo at 20 MiB (06-decisions.md "Photo
+// upload trust boundary").
+const maxPhotoBytes = 20 << 20
+
+// multipartSlack is headroom above maxPhotoBytes for multipart boundaries
+// and part headers, so a file of exactly maxPhotoBytes is not rejected for
+// the envelope's overhead. The file itself is size-checked separately.
+const multipartSlack = 1 << 20
+
+// acceptedPhotoExts is the fixed upload type set (06-decisions.md "Photo
+// upload trust boundary"), matching cmd/ingest's accepted extensions.
+var acceptedPhotoExts = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".webp": true,
+}
+
+// config carries the optional tagging wiring New needs to serve the upload
+// route. It is built from Option values so existing read-only callers can
+// keep calling New(st, photosDir) unchanged.
+type config struct {
+	processor  *tagging.Processor
+	stagingDir string
+}
+
+// Option customises the engine New builds.
+type Option func(*config)
+
+// WithTagging wires the local VLM processor and staging directory used by
+// POST /api/items/photo. cmd/server builds the processor from config the
+// same way cmd/ingest does. Without it the route still exists but returns
+// 503, so the registered route surface is fixed regardless of wiring.
+func WithTagging(p *tagging.Processor, stagingDir string) Option {
+	return func(c *config) {
+		c.processor = p
+		c.stagingDir = stagingDir
+	}
+}
+
 // dateFormat is the added_date rendering the read-only contract fixes:
 // YYYY-MM-DD.
 const dateFormat = "2006-01-02"
 
 // New builds the Gin engine with the approved catalog routes: the read
 // routes (GET /api/items, /api/items/:id, /api/photos/:filename,
-// /api/taxonomy) and the single-item edit write route
-// (PUT /api/items/:id). No delete route exists in Phase 1
-// (07-architecture.md "Catalog write API"). photosDir is the directory
-// photo requests are served from; cmd/server passes DefaultPhotosDir, and
-// tests may point it at a temp directory so they never touch the real
-// data/photos/.
-func New(st *store.Store, photosDir string) *gin.Engine {
+// /api/taxonomy), the single-item edit write route (PUT /api/items/:id),
+// and the create draft route (POST /api/items/photo). No delete route
+// exists in Phase 1 (07-architecture.md "Catalog write API"). photosDir is
+// the directory photo requests are served from; cmd/server passes
+// DefaultPhotosDir, and tests may point it at a temp directory so they
+// never touch the real data/photos/.
+func New(st *store.Store, photosDir string, opts ...Option) *gin.Engine {
+	cfg := &config{stagingDir: DefaultStagingDir}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.GET("/api/items", listItems(st))
 	r.GET("/api/items/:id", getItem(st))
 	r.PUT("/api/items/:id", updateItem(st))
+	r.POST("/api/items/photo", uploadPhoto(cfg.processor, cfg.stagingDir))
 	r.GET("/api/photos/:filename", servePhoto(photosDir))
 	r.GET("/api/taxonomy", taxonomy)
 	return r
@@ -212,6 +263,122 @@ func updateItem(st *store.Store) gin.HandlerFunc {
 		}
 		c.JSON(http.StatusOK, toResponse(updated))
 	}
+}
+
+// draftResponse is POST /api/items/photo's success body: the seven
+// validated tagging fields of 04-data-schema.md (flattened), the generated
+// item id, and photo_ref — the basename of the staged upload under the
+// staging directory, which the client posts back to persist the draft
+// (07-architecture.md "Catalog write API": "returns a non-persisted draft
+// (tagging fields + a photo reference)"). It is not a catalog row: no row
+// is written and no file reaches data/photos/.
+type draftResponse struct {
+	ItemID   string `json:"item_id"`
+	PhotoRef string `json:"photo_ref"`
+	tagging.TaggingResult
+}
+
+// uploadPhoto accepts one multipart garment photo on field "photo", stages
+// it server-named <item_id>.<ext> under stagingDir, and runs the same local
+// tagging pipeline (retry-once policy included) cmd/ingest uses, returning
+// a non-persisted draft. The client filename is never used as a path — only
+// its extension selects the stored form and the name is always the
+// server-generated id — so a traversal filename cannot escape stagingDir
+// (06-decisions.md "Photo upload trust boundary"). Rejections before
+// tagging (bad extension, oversize) stage nothing; any tagging failure
+// removes the staged upload so no residue accumulates.
+func uploadPhoto(p *tagging.Processor, stagingDir string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if p == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "tagging is not configured"})
+			return
+		}
+
+		// Bound the request before parsing so an oversized upload is
+		// rejected without an unbounded read. The file is size-checked
+		// below; the slack covers multipart overhead for exactly 20 MiB.
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxPhotoBytes+multipartSlack)
+
+		fileHeader, err := c.FormFile("photo")
+		if err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "photo exceeds the 20 MiB limit"})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": `missing or malformed multipart photo in field "photo"`})
+			return
+		}
+		if fileHeader.Size > maxPhotoBytes {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "photo exceeds the 20 MiB limit"})
+			return
+		}
+
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if !acceptedPhotoExts[ext] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported photo extension; accepted: .jpg, .jpeg, .png, .webp"})
+			return
+		}
+
+		itemID, err := tagging.NewItemID()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate item id"})
+			return
+		}
+		if err := os.MkdirAll(stagingDir, 0o755); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare staging directory"})
+			return
+		}
+		stagedName := itemID + ext
+		stagedPath := filepath.Join(stagingDir, stagedName)
+		if err := saveUpload(fileHeader, stagedPath); err != nil {
+			_ = os.Remove(stagedPath)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to stage upload"})
+			return
+		}
+
+		outcome, err := p.ProcessWithID(c.Request.Context(), itemID, stagedPath)
+		if err != nil {
+			_ = os.Remove(stagedPath)
+			if errors.Is(err, tagging.ErrVLMUnreachable) {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "VLM unreachable"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "tagging failed"})
+			return
+		}
+		if outcome.Flagged {
+			_ = os.Remove(stagedPath)
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "tagging failed validation after retry; retry or choose another photo"})
+			return
+		}
+
+		c.JSON(http.StatusOK, draftResponse{
+			ItemID:        itemID,
+			PhotoRef:      stagedName,
+			TaggingResult: outcome.Result,
+		})
+	}
+}
+
+// saveUpload writes one uploaded part to dest. dest is always a
+// server-built path, never the client-supplied filename.
+func saveUpload(fh *multipart.FileHeader, dest string) error {
+	src, err := fh.Open()
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, src); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func toResponse(item store.Item) itemResponse {
