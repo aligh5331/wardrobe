@@ -15,18 +15,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"wardrobe/internal/catalog"
 	"wardrobe/internal/config"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
 
 	_ "github.com/joho/godotenv/autoload"
 )
-
-// photosDir holds the stored copies of ingested garment photos, relative to
-// the project root (07-architecture.md "Backend").
-const photosDir = "data/photos"
 
 func main() {
 	cfg, err := config.Load()
@@ -102,46 +98,15 @@ func main() {
 				continue
 			}
 
-			if err := persist(st, outcome); err != nil {
+			// Shared rollback-safe create (ING-028); the ingest path
+			// supplies no notes yet. Failures still surface in the
+			// existing CLI style: log "persist <path>" and exit 1.
+			if _, err := catalog.Create(st, catalog.PhotosDir, outcome.ItemID, outcome.PhotoPath, outcome.Result, ""); err != nil {
 				log.Printf("persist %s: %v", photoPath, err)
 				os.Exit(1)
 			}
 		}
 	}
-}
-
-// persist copies the tagged photo into data/photos/ and writes the matching
-// catalog row, reusing the item id the tagging processor already generated.
-// It is only called for non-flagged outcomes. A failed copy or insert is
-// returned to the caller; retry/rollback/cleanup is deliberately out of scope
-// for this sprint.
-func persist(st *store.Store, outcome tagging.Outcome) error {
-	if err := os.MkdirAll(photosDir, 0o755); err != nil {
-		return err
-	}
-
-	dest := filepath.Join(photosDir, outcome.ItemID+filepath.Ext(outcome.PhotoPath))
-	data, err := os.ReadFile(outcome.PhotoPath)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(dest, data, 0o644); err != nil {
-		return err
-	}
-
-	return st.Insert(store.Item{
-		ID:              outcome.ItemID,
-		Category:        outcome.Result.Category,
-		Subcategory:     outcome.Result.Subcategory,
-		DominantColor:   outcome.Result.DominantColor,
-		SecondaryColors: outcome.Result.SecondaryColors,
-		Pattern:         outcome.Result.Pattern,
-		WarmthTier:      outcome.Result.WarmthTier,
-		Formality:       outcome.Result.Formality,
-		PhotoPath:       dest,
-		AddedDate:       time.Now(),
-		Notes:           "",
-	})
 }
 
 func expandPaths(arg string) ([]string, error) {
