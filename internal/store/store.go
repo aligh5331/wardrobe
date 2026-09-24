@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,6 +11,11 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// ErrNotFound is returned by Get and Update when no item has the given id.
+// Callers identify it with errors.Is — no gorm import needed at the call
+// site (e.g. the API layer maps it to 404).
+var ErrNotFound = errors.New("item not found")
 
 // DefaultDBPath is the default path for the wardrobe SQLite database.
 const DefaultDBPath = "data/wardrobe.db"
@@ -68,6 +74,40 @@ func Open(path string) (*Store, error) {
 // Insert adds a new wardrobe item to the store.
 func (s *Store) Insert(item Item) error {
 	return s.db.Create(&item).Error
+}
+
+// Get returns the item with the given id, or ErrNotFound.
+func (s *Store) Get(id string) (Item, error) {
+	var item Item
+	err := s.db.First(&item, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Item{}, ErrNotFound
+	}
+	if err != nil {
+		return Item{}, err
+	}
+	return item, nil
+}
+
+// Update persists the seven tagging fields and notes for the item with
+// item.ID. id, added_date, and photo_path are left unchanged
+// (04-data-schema.md "Write-path rules (interactive create/edit)"). If no
+// item has that id it returns ErrNotFound and writes nothing. Enum
+// validation stays in the tagging/API layer — not duplicated here.
+func (s *Store) Update(item Item) error {
+	existing, err := s.Get(item.ID)
+	if err != nil {
+		return err
+	}
+	existing.Category = item.Category
+	existing.Subcategory = item.Subcategory
+	existing.DominantColor = item.DominantColor
+	existing.SecondaryColors = item.SecondaryColors
+	existing.Pattern = item.Pattern
+	existing.WarmthTier = item.WarmthTier
+	existing.Formality = item.Formality
+	existing.Notes = item.Notes
+	return s.db.Save(&existing).Error
 }
 
 // List returns all wardrobe items from the store.
