@@ -76,19 +76,17 @@ wardrobe/
 ├── 06-decisions.md
 ├── 07-architecture.md
 │
-├── agents/                      # canonical role definitions — kept identical
-│   │				 # to .opencode/agents/ by hand; not auto-generated
+├── agents/                      # canonical role definitions (single source)
 │   ├── planner.md
 │   ├── coder.md
 │   ├── tester.md
 │   └── reviewer.md
 │
 ├── .opencode/
-│   └── agents/                  # what opencode actually loads — same content
-│       ├── planner.md           # as agents/*.md, tracked separately since
-│       ├── coder.md             # this is the enforced copy and the
-│       ├── tester.md            # this is the enforced copy and the
-│       └── reviewer.md          # in history in their own right
+│   └── agents -> ../agents      # symlink to agents/ (Linux); what opencode
+│                                # loads. Git stores it as a symlink (120000);
+│                                # on Windows it may check out as a plain file,
+│                                # so keep the two in sync by hand there.
 │
 ├── backlog/                     # one file per ticket, board state via
 │   └── <TICKET-ID>.md           # a `**Status:**` line (02-agile-process.md)
@@ -134,10 +132,14 @@ different:
   permission block already hardcodes `0*.md` as a glob (deny-edit for
   Planner/Tester/Reviewer, deny for Coder). Moving them means updating
   four permission blocks to `docs/0*.md` for no functional gain.
-- **`.opencode/agents/` is tracked, not ignored** — it's generated from
-  `agents/*.md`, but it's also where the actual enforced permissions
-  live, so having it in git history (and diffable) matters more than
-  treating it as a build artifact.
+- **`.opencode/agents/` is a symlink to `agents/`, not a second copy** — on
+  Linux it resolves to the same `agents/*.md`, so the canonical role files are
+  the single source of truth and there is nothing to keep in sync. Git tracks
+  it as a symlink (mode `120000`), not as duplicated file contents. Windows
+  checkouts may not honor the link — git can materialize it as a plain file
+  holding the target path — so on Windows the `agents/` and `.opencode/agents/`
+  copies must be kept in sync by hand. That's a machine/platform caveat, not a
+  project convention.
 - **`data/` is fully gitignored**, db included — it's real wardrobe
   photos and personal cataloging data, not something to commit even
   privately.
