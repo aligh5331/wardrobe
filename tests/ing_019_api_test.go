@@ -1,9 +1,12 @@
 // Package tests holds black-box acceptance tests for backlog tickets.
-// ING-019: cmd/server serves a read-only Gin API — GET /api/items returns
+// ING-019: cmd/server serves a Gin API — GET /api/items returns
 // the 04-data-schema.md fields plus a photo URL, GET /api/photos/<file>
-// returns stored bytes (rejecting traversal), and only read-only routes
-// are registered. These tests exercise the exported wardrobe/internal/api
-// surface; implementation code is never touched from here.
+// returns stored bytes (rejecting traversal), and exactly the approved
+// route set is registered (AC7's assertion grew with the approved write
+// routes: ING-036 added GET /api/taxonomy, ING-030 added GET/PUT
+// /api/items/:id — still no delete). These tests exercise the exported
+// wardrobe/internal/api surface; implementation code is never touched
+// from here.
 package tests
 
 import (
@@ -306,25 +309,30 @@ func TestING019_AC6_RejectsTraversalFilenames(t *testing.T) {
 }
 
 // AC7: Given the server is running / When its registered routes are
-// inspected / Then only the approved read-only routes exist — no
-// create/update/delete route. The approved set now includes
-// GET /api/taxonomy (ING-036); write-route tickets extend it further per
-// ING-030's test note.
+// inspected / Then exactly the approved route set exists (07-architecture.md
+// "Backend" + "Catalog write API"): the read routes GET /api/items,
+// GET /api/items/:id, GET /api/photos/:filename, GET /api/taxonomy, plus
+// the single approved write route PUT /api/items/:id. No delete route and
+// no unapproved method exists — any extra or missing route fails here.
+// (Assertion converted from the read-only set by ING-030's test note;
+// write-route tickets extend the set only when their route is approved.)
 func TestING019_AC7_OnlyReadOnlyRoutes(t *testing.T) {
 	engine, _, _ := newING019API(t)
 
 	routes := engine.Routes()
-	if len(routes) != 3 {
-		t.Fatalf("registered routes = %d, want exactly 3: %v", len(routes), ing019RouteNames(routes))
+	if len(routes) != 5 {
+		t.Fatalf("registered routes = %d, want exactly 5: %v", len(routes), ing019RouteNames(routes))
 	}
 	want := map[string]bool{
 		"GET /api/items":            false,
+		"GET /api/items/:id":        false,
+		"PUT /api/items/:id":        false,
 		"GET /api/photos/:filename": false,
 		"GET /api/taxonomy":         false,
 	}
 	for _, r := range routes {
-		if r.Method != http.MethodGet {
-			t.Errorf("route %s %s is not read-only (only GET is allowed)", r.Method, r.Path)
+		if r.Method == http.MethodDelete || r.Method == http.MethodPatch {
+			t.Errorf("route %s %s uses a method outside the approved set (no delete in Phase 1)", r.Method, r.Path)
 		}
 		key := r.Method + " " + r.Path
 		if _, ok := want[key]; !ok {

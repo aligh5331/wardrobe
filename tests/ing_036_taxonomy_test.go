@@ -14,7 +14,9 @@
 // by TestING019_AC7_OnlyReadOnlyRoutes in ing_019_api_test.go: that
 // ticket's route-set assertion was updated by ING-036 to the exact
 // approved set {GET /api/items, GET /api/photos/:filename,
-// GET /api/taxonomy}, which proves both halves in one exact-set check.
+// GET /api/taxonomy} and later extended by ING-030 to the then-approved
+// set including GET/PUT /api/items/:id, which proves both halves in one
+// exact-set check.
 package tests
 
 import (
