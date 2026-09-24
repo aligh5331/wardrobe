@@ -1,5 +1,6 @@
-// Package api exposes the read-only catalog and photo HTTP surface over
-// Gin (07-architecture.md "Backend", "Full project structure").
+// Package api exposes the read-only catalog, photo, and taxonomy HTTP
+// surface over Gin (07-architecture.md "Backend", "Full project
+// structure").
 package api
 
 import (
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"wardrobe/internal/store"
+	"wardrobe/internal/tagging"
 )
 
 // DefaultPhotosDir is where stored garment photos live
@@ -22,15 +24,16 @@ const DefaultPhotosDir = "data/photos"
 // YYYY-MM-DD.
 const dateFormat = "2006-01-02"
 
-// New builds the Gin engine with only the read-only catalog/photo
-// routes. photosDir is the directory photo requests are served from;
-// cmd/server passes DefaultPhotosDir, and tests may point it at a temp
-// directory so they never touch the real data/photos/.
+// New builds the Gin engine with only the read-only catalog/photo/
+// taxonomy routes. photosDir is the directory photo requests are served
+// from; cmd/server passes DefaultPhotosDir, and tests may point it at a
+// temp directory so they never touch the real data/photos/.
 func New(st *store.Store, photosDir string) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.GET("/api/items", listItems(st))
 	r.GET("/api/photos/:filename", servePhoto(photosDir))
+	r.GET("/api/taxonomy", taxonomy)
 	return r
 }
 
@@ -73,6 +76,18 @@ func contentType(name string, data []byte) string {
 		return ct
 	}
 	return http.DetectContentType(data)
+}
+
+// taxonomy serves the closed enum vocabulary the create/edit forms load
+// (07-architecture.md "Taxonomy read route"): every category with its
+// valid subcategories, the color palette, patterns, warmth tiers, and
+// formality — derived from the same internal/tagging tables
+// ParseTaggingResult validates against, never a second hard-coded copy
+// (06-decisions.md "Taxonomy exported to the browser via
+// GET /api/taxonomy, not a bundled copy"). It reads no store and runs no
+// model: a pure read of package tables.
+func taxonomy(c *gin.Context) {
+	c.JSON(http.StatusOK, tagging.TaxonomyTables())
 }
 
 // itemResponse is the JSON shape of one catalog row: the

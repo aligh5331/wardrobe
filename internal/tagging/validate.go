@@ -87,6 +87,38 @@ var (
 	validFormalities = []string{"casual", "smart-casual", "formal"}
 )
 
+// Taxonomy is the closed enum vocabulary (03-taxonomy.md) in the JSON
+// shape GET /api/taxonomy serves to the create/edit forms
+// (07-architecture.md "Taxonomy read route"). Categories maps each
+// category to its valid subcategories.
+type Taxonomy struct {
+	Categories  map[string][]string `json:"categories"`
+	Colors      []string            `json:"colors"`
+	Patterns    []string            `json:"patterns"`
+	WarmthTiers []string            `json:"warmth_tiers"`
+	Formality   []string            `json:"formality"`
+}
+
+// TaxonomyTables returns the tables ParseTaggingResult validates against,
+// so GET /api/taxonomy serves the single source instead of a second
+// hard-coded copy (06-decisions.md "Taxonomy exported to the browser via
+// GET /api/taxonomy, not a bundled copy"). Categories is keyed from
+// validCategories so every approved category appears with its
+// subcategories.
+func TaxonomyTables() Taxonomy {
+	categories := make(map[string][]string, len(validCategories))
+	for _, category := range validCategories {
+		categories[category] = validSubcategories[category]
+	}
+	return Taxonomy{
+		Categories:  categories,
+		Colors:      colorPalette,
+		Patterns:    validPatterns,
+		WarmthTiers: validWarmthTiers,
+		Formality:   validFormalities,
+	}
+}
+
 // ParseTaggingResult parses raw model text and validates every field against
 // 03-taxonomy.md's enums and 04-data-schema.md's required fields. It returns
 // a typed TaggingResult only when the response is valid JSON and fully

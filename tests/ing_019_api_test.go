@@ -306,18 +306,21 @@ func TestING019_AC6_RejectsTraversalFilenames(t *testing.T) {
 }
 
 // AC7: Given the server is running / When its registered routes are
-// inspected / Then only read-only catalog/photo routes exist — no
-// create/update/delete route.
+// inspected / Then only the approved read-only routes exist — no
+// create/update/delete route. The approved set now includes
+// GET /api/taxonomy (ING-036); write-route tickets extend it further per
+// ING-030's test note.
 func TestING019_AC7_OnlyReadOnlyRoutes(t *testing.T) {
 	engine, _, _ := newING019API(t)
 
 	routes := engine.Routes()
-	if len(routes) != 2 {
-		t.Fatalf("registered routes = %d, want exactly 2: %v", len(routes), ing019RouteNames(routes))
+	if len(routes) != 3 {
+		t.Fatalf("registered routes = %d, want exactly 3: %v", len(routes), ing019RouteNames(routes))
 	}
 	want := map[string]bool{
-		"GET /api/items":               false,
-		"GET /api/photos/:filename":    false,
+		"GET /api/items":            false,
+		"GET /api/photos/:filename": false,
+		"GET /api/taxonomy":         false,
 	}
 	for _, r := range routes {
 		if r.Method != http.MethodGet {
