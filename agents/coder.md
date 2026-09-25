@@ -6,16 +6,14 @@ color: primary
 steps: 30
 temperature: 0.3
 permission:
-  "*": ask
+  "*": deny
   skill: allow
   context7_resolve-library-id: allow
   context7_query-docs: allow
-  list: allow
   glob: allow
   grep: allow
   todowrite: allow
   todoread: allow
-  webfetch: deny
   read:
     "*": allow
     "**/.env*": ask
@@ -38,13 +36,7 @@ permission:
   external_directory: deny
   task: deny
   bash:
-    "git status *": allow
-    "git diff *": allow
-    "git log *": allow
-    "git show *": allow
-    "git blame *": allow
-    "git branch *": allow
-    "git add *": allow
+    "git *": allow
     "git commit *": ask
     "git stash *": ask
     "git checkout -b *": deny
@@ -62,23 +54,16 @@ permission:
     "git fetch *": deny
     "rm -rf *": deny
     "sudo *": deny
-    "go build *": allow
-    "go vet *": allow
-    "go test *": allow
+    "go *": allow
+    "gofmt *": allow
     "go fmt *": ask
     "go mod tidy": ask
-    "go mod download": allow
     "go run *": ask
     "go clean *": deny
     "go install *": deny
     "go get *": ask
-    "npm ci": allow
-    "npm install": allow
-    "npm test": allow
-    "npm run build": allow
-    "npm run test": allow
+    "npm *": allow
     "npm run dev": ask
-    "npx vitest *": allow
 ---
 
 # Agent: Coder

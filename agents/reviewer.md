@@ -6,7 +6,7 @@ color: success
 steps: 15
 temperature: 0.2
 permission:
-  "*": ask
+  "*": deny
   skill: allow
   list: allow
   glob: allow
@@ -18,24 +18,16 @@ permission:
   write: deny
   edit:
     "backlog/**": allow
-    "src/**": deny
-    "tests/**": deny
-    "test/**": deny
+    "temp/**": ask
     "0*.md": deny
     "agents/*.md": deny
     "AGENTS.md": deny
-    "temp/**": deny
-    "/tmp/**": deny
-    "/var/tmp/**": deny
   external_directory: deny
   task: deny
   bash:
-    "git status *": allow
-    "git diff *": allow
-    "git log *": allow
-    "git show  *": allow
-    "git blame *": allow
-    "git branch *": allow
+    "git *": allow
+    "git commit *": ask
+    "git stash *": ask
     "git checkout -b *": deny
     "git push *": deny
     "git merge *": deny

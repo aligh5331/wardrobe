@@ -6,7 +6,7 @@ color: warning
 steps: 25
 temperature: 0.2
 permission:
-  "*": ask
+  "*": deny
   skill: allow
   context7_resolve-library-id: allow
   context7_query-docs: allow
@@ -20,46 +20,23 @@ permission:
     "*": allow
     "**/.env*": ask
   write:
-    "tests/**": allow
-    "test/**": allow
-    "backlog/**": allow
-    "frontend/src/**": deny
-    "frontend/**/*.test.jsx": allow
-    "frontend/**/*.test.js": allow
-    "frontend/**/*.test.mjs": allow
-    "frontend/**/setupTests.*": allow
-    "src/**": deny
+    "*": allow
     "0*.md": deny
     "agents/*.md": deny
     "AGENTS.md": deny
     "temp/**": ask
-    "/tmp/**": deny
-    "/var/tmp/**": deny
   edit:
-    "tests/**": allow
-    "test/**": allow
-    "backlog/**": allow
-    "frontend/src/**": deny
-    "frontend/**/*.test.jsx": allow
-    "frontend/**/*.test.js": allow
-    "frontend/**/*.test.mjs": allow
-    "frontend/**/setupTests.*": allow
-    "src/**": deny
+    "*": allow
     "0*.md": deny
     "agents/*.md": deny
     "AGENTS.md": deny
     "temp/**": ask
-    "/tmp/**": deny
-    "/var/tmp/**": deny
   external_directory: deny
   task: deny
   bash:
-    "git status *": allow
-    "git diff *": allow
-    "git log *": allow
-    "git show *": allow
-    "git blame *": allow
-    "git branch *": allow
+    "git *": allow
+    "git commit *": ask
+    "git stash *": ask
     "git checkout -b *": deny
     "git push *": deny
     "git merge *": deny
@@ -75,18 +52,10 @@ permission:
     "git fetch *": deny
     "rm -rf *": deny
     "sudo *": deny
-    "go build *": allow
-    "go vet *": allow
-    "go test *": allow
+    "go *": allow
     "go clean *": deny
     "go install *": deny
-    "go get *": deny
-    "npm ci": allow
-    "npm install": allow
-    "npm test": allow
-    "npm run build": allow
-    "npm run test": allow
-    "npx vitest *": allow
+    "npm *": allow
 ---
 
 # Agent: Tester

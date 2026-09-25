@@ -6,7 +6,7 @@ color: info
 steps: 15
 temperature: 0.5
 permission:
-  "*": ask
+  "*": deny
   skill: allow
   list: allow
   glob: allow
@@ -17,24 +17,16 @@ permission:
     "**/.env*": ask
   write:
     "backlog/**": allow
-    "src/**": deny
-    "tests/**": deny
+    "temp/**": ask
     "0*.md": deny
     "agents/*.md": deny
     "AGENTS.md": deny
-    "temp/**": deny
-    "/tmp/**": deny
-    "/var/tmp/**": deny
   edit:
-    "*": allow
-    "src/**": deny
-    "tests/**": deny
+    "backlog/**": allow
+    "temp/**": ask
     "0*.md": deny
     "agents/*.md": deny
     "AGENTS.md": deny
-    "temp/**": deny
-    "/tmp/**": deny
-    "/var/tmp/**": deny
   external_directory: deny
   bash: deny
   task: deny
