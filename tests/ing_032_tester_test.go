@@ -46,7 +46,7 @@ func TestING032_Tester_BodyCannotOverrideServerOwnedFields(t *testing.T) {
 	if got.AddedDate == "1999-01-01" || got.AddedDate == "" {
 		t.Errorf("response added_date = %q, want the create-time date, not the body's value", got.AddedDate)
 	}
-	wantPath := filepath.Join(h.photosDir, id+".jpg")
+	wantPath := filepath.ToSlash(filepath.Join(h.photosDir, id+".jpg"))
 	if got.PhotoPath != wantPath {
 		t.Errorf("response photo_path = %q, want the server-derived %q", got.PhotoPath, wantPath)
 	}

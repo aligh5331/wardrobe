@@ -66,7 +66,7 @@ func TestING028_Create_SuccessCopiesPhotoAndInsertsRow(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	wantCopy := filepath.Join(photos, id+".jpg")
+	wantCopy := filepath.ToSlash(filepath.Join(photos, id+".jpg"))
 	if item.PhotoPath != wantCopy {
 		t.Errorf("item.PhotoPath = %q, want the copy %q", item.PhotoPath, wantCopy)
 	}

@@ -1,0 +1,5 @@
+# Normalize line endings repository-wide: store LF and check out LF on every
+# platform. Without this, core.autocrlf=true on Windows rewrites tracked text
+# files (specs, Go sources, fixtures) to CRLF in the working tree, which broke
+# the spec-parsing acceptance tests (e.g. the ING-002 prompt comparison).
+* text=auto eol=lf

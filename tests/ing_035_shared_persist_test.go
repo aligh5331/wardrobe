@@ -140,7 +140,7 @@ func TestING035_AC3_CLIAndAPISharedPersistence(t *testing.T) {
 	// Same photo_path shape and stored bytes: data/photos/<item_id>.<ext>
 	// under each writer's own root.
 	for name, p := range map[string]string{"cli": cli.copyPath(cliRow.PhotoPath), "api": apiRow.PhotoPath} {
-		if !strings.HasSuffix(p, filepath.Join("data", "photos", itemID+".jpg")) {
+		if !strings.HasSuffix(filepath.ToSlash(p), "data/photos/"+itemID+".jpg") {
 			t.Errorf("%s photo_path = %q, want the data/photos/%s.jpg shape", name, p, itemID)
 		}
 		got, err := os.ReadFile(p)

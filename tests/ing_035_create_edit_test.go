@@ -259,7 +259,7 @@ func TestING035_AC1_UploadCorrectPersistFetchUpdateRoundTrip(t *testing.T) {
 	}
 
 	// Exactly one row, with the corrected values and the moved photo.
-	wantPhoto := filepath.Join(h.photosDir, id+".jpg")
+	wantPhoto := filepath.ToSlash(filepath.Join(h.photosDir, id+".jpg"))
 	rows, err = h.st.List()
 	if err != nil {
 		t.Fatalf("List() = %v, want nil", err)

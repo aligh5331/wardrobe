@@ -37,7 +37,7 @@ type ing018Harness struct {
 func newING018Harness(t *testing.T) *ing018Harness {
 	t.Helper()
 
-	bin := filepath.Join(t.TempDir(), "ingest")
+	bin := filepath.Join(t.TempDir(), "ingest"+exeSuffix())
 	build := exec.Command("go", "build", "-o", bin, "./cmd/ingest")
 	build.Dir = moduleRoot(t)
 	if out, err := build.CombinedOutput(); err != nil {
@@ -223,7 +223,7 @@ func TestING018_AC1_NonFlaggedOutcomePersistsRowAndPhotoCopy(t *testing.T) {
 		t.Errorf("row.Notes = %q, want empty", row.Notes)
 	}
 
-	wantCopy := filepath.Join("data", "photos", itemID+".jpg")
+	wantCopy := filepath.ToSlash(filepath.Join("data", "photos", itemID+".jpg"))
 	if row.PhotoPath != wantCopy {
 		t.Errorf("row.PhotoPath = %q, want the stored copy %q", row.PhotoPath, wantCopy)
 	}
@@ -491,7 +491,7 @@ func TestING018_Edge_EmptySecondaryColorsAndExtensionPreserved(t *testing.T) {
 	if got := items[0].SecondaryColors; len(got) != 0 {
 		t.Errorf("row.SecondaryColors = %v, want an empty list", got)
 	}
-	wantCopy := filepath.Join("data", "photos", itemID+".PNG")
+	wantCopy := filepath.ToSlash(filepath.Join("data", "photos", itemID+".PNG"))
 	if items[0].PhotoPath != wantCopy {
 		t.Errorf("row.PhotoPath = %q, want the source extension preserved as %q", items[0].PhotoPath, wantCopy)
 	}

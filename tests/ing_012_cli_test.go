@@ -67,7 +67,7 @@ type ing012Harness struct {
 func newING012Harness(t *testing.T) *ing012Harness {
 	t.Helper()
 
-	bin := filepath.Join(t.TempDir(), "ingest")
+	bin := filepath.Join(t.TempDir(), "ingest"+exeSuffix())
 	build := exec.Command("go", "build", "-o", bin, "./cmd/ingest")
 	build.Dir = moduleRoot(t)
 	if out, err := build.CombinedOutput(); err != nil {

@@ -205,7 +205,7 @@ func TestING032_AC1_PersistMovesPhotoInsertsRowReturnsItemShape(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("catalog rows = %d, want exactly 1", len(rows))
 	}
-	wantPhoto := filepath.Join(h.photosDir, id+".jpg")
+	wantPhoto := filepath.ToSlash(filepath.Join(h.photosDir, id+".jpg"))
 	if rows[0].ID != id || rows[0].PhotoPath != wantPhoto {
 		t.Errorf("row = {id:%q photo_path:%q}, want {id:%q photo_path:%q}", rows[0].ID, rows[0].PhotoPath, id, wantPhoto)
 	}

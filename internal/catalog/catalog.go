@@ -56,7 +56,9 @@ func Create(st *store.Store, photosDir, id, sourcePhoto string, result tagging.T
 	if err := os.WriteFile(dest, data, 0o644); err != nil {
 		return store.Item{}, rollback(dest, err)
 	}
-	item.PhotoPath = dest
+	// Store the portable, spec-shaped data/photos/<id><ext> path: filepath.Join
+	// is OS-native, so without ToSlash a Windows run would persist backslashes.
+	item.PhotoPath = filepath.ToSlash(dest)
 
 	if err := st.Insert(item); err != nil {
 		return store.Item{}, rollback(dest, err)

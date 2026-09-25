@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -68,7 +67,7 @@ func startServer(t *testing.T, env map[string]string) (*exec.Cmd, *syncBuffer) {
 	cmd.Env = envWith(env)
 	cmd.Stdout = buf
 	cmd.Stderr = buf
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setProcAttr(cmd)
 
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start server: %v", err)
@@ -80,7 +79,7 @@ func killServer(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return
 	}
-	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	killTree(cmd)
 	_ = cmd.Wait()
 }
 

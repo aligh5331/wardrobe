@@ -74,7 +74,10 @@ func specTaggingPrompt(t *testing.T) string {
 	if end < 0 {
 		t.Fatal("unterminated fenced code block in the Prompt section")
 	}
-	return strings.TrimRight(rest[:end], "\n")
+	// Normalize CRLF so a stale Windows checkout (core.autocrlf) cannot make
+	// the spec's prompt differ from the LF literal in client.go.
+	prompt := strings.ReplaceAll(rest[:end], "\r\n", "\n")
+	return strings.TrimRight(prompt, "\n")
 }
 
 // writePhoto writes a known-bytes photo file into the test's temp dir

@@ -19,7 +19,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -34,7 +33,7 @@ type ing019Harness struct {
 func newING019Harness(t *testing.T) *ing019Harness {
 	t.Helper()
 
-	bin := filepath.Join(t.TempDir(), "server")
+	bin := filepath.Join(t.TempDir(), "server"+exeSuffix())
 	build := exec.Command("go", "build", "-o", bin, "./cmd/server")
 	build.Dir = moduleRoot(t)
 	if out, err := build.CombinedOutput(); err != nil {
@@ -54,7 +53,7 @@ func (h *ing019Harness) start(t *testing.T, env map[string]string, args ...strin
 	cmd.Env = envWith(env)
 	cmd.Stdout = buf
 	cmd.Stderr = buf
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setProcAttr(cmd)
 
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start server: %v", err)
