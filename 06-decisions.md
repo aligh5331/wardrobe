@@ -2,6 +2,204 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Taxonomy exported to the browser via `GET /api/taxonomy`, not a bundled copy
+
+The interactive create/edit forms need the valid enum values, but
+`03-taxonomy.md` is a repo spec, not shipped to the frontend, and
+`07-architecture.md` exposed no taxonomy route. Rather than duplicating the
+enums into the JS bundle, the backend serves them: `GET /api/taxonomy` returns
+categories with their valid subcategories, the color palette, patterns, warmth
+tiers, and formality — derived from the same tables `internal/tagging`
+validates against, so the client and server cannot drift and a future taxonomy
+change reaches the forms without a frontend edit.
+
+Rejected: a generated or hand-copied client-side enum module — `03-taxonomy.md`
+is already mirrored into `internal/tagging/validate.go`; a third copy is the
+one that silently goes stale.
+
+## Interactive catalog create/edit UI: local VLM draft, human confirm, shared persistence
+
+Phase 1's catalog gains a second, UI-driven writer. Two operations:
+
+- **Create** — the user uploads one garment photo in the browser. The backend
+  runs the *same* local tagging pipeline (`05-vlm-tagging-spec.md`,
+  Qwen3-VL-8B via llama.cpp) and returns the tagged result as a **draft that
+  is not persisted**. The user reviews and may correct every tagging field,
+  then saves; only then is the photo moved into `data/photos/` and the row
+  written.
+- **Edit** — every tagging field plus `notes` may be corrected on an existing
+  item. `id`, `added_date`, and the photo are immutable in this feature; there
+  is no re-tag and no photo replacement.
+
+Why now: `05-vlm-tagging-spec.md` already expects "some manual correction
+early on" (weaker subcategory accuracy, pattern catch-all). Correcting via
+`cmd/ingest` means re-running inference on a photo when only a label is wrong;
+the UI edit path corrects labels without touching the photo or the model.
+
+Constraints unchanged: same base model, no fine-tuning, fully local, one photo
+per garment, single embedded binary. The VLM call itself is unchanged — only
+its trigger and the fact that a human confirms before persist.
+
+**Not in scope:** delete, photo replacement/re-crop, re-tagging an existing
+item, bulk import, multi-user/auth. The API surface is specified in
+`07-architecture.md` "Catalog write API".
+
+## Second catalog writer exists: extract shared persistence out of `cmd/ingest`
+
+The earlier "Ingest→DB wiring: direct call, no provider/service abstraction
+yet" entry deferred extraction until a second writer existed, naming a future
+Gin route as the example. That condition is now met (the interactive
+create/edit UI above), so the photo-copy + row-insert logic currently inline in
+`cmd/ingest/main.go`'s `persist` moves to one shared internal package used by
+both the CLI and the API. There is still exactly one persistence
+implementation; the API route is a second *caller*, not a second copy.
+
+Rejected: duplicating the logic in the handler (two copies that can drift); a
+queue/service abstraction (no queue, no worker, one local process).
+
+## Catalog writes must not leave orphan photos or dangling rows
+
+Resolves the gap logged as `backlog/ING-028.md`. A create performs two writes —
+the photo file and the catalog row — and must not leave a half-written result
+when either fails:
+
+- A failed create leaves **no orphan photo** in `data/photos/` and **no row**
+  pointing at a missing photo.
+- The failure is explicitly recoverable: re-running the create cannot leave
+  duplicate state (the item id comes from the tagging pipeline, so a retry uses
+  a fresh id and a failed attempt's residue is removed).
+
+Implementation mechanism (which step commits first, staging location, cleanup
+on each failure branch) is a ticket-level detail; the behavior above is the
+contract. This closes ING-028's "behavior to be decided" and makes it
+ticketable.
+
+## Photo upload trust boundary: fixed types, size cap, server-derived filename
+
+The upload endpoint is the first client-supplied file surface. Accepted
+extensions are the same set the CLI already ingests — `.jpg`, `.jpeg`, `.png`,
+`.webp` — and each upload is capped at 20 MiB. The stored name is always
+server-derived (`<item_id>.<ext>`); the client-supplied filename is never used
+as a path, so it cannot escape `data/photos/`. Serving already rejects
+traversal via `validPhotoName` (`internal/api/api.go`). Staged uploads live
+under a gitignored runtime staging directory and are removed after a successful
+save or a failed create.
+
+## Testing tooling: Vitest + Testing Library for the frontend, stdlib-first for Go
+
+Current state: the Go suite is stdlib-only (`testing`, `-race`, `httptest`,
+build-tagged process tests that boot the real binary) and is adequate — no
+gap worth adding a framework for. The frontend has no JS test runner at all:
+ING-020's UI acceptance criteria were verified *structurally*, by a
+`node --test` suite reading `App.jsx` and the built bundle, not by rendering
+React in a DOM. That is the actual gap this decision closes.
+
+**Decision — frontend:** adopt **Vitest** with **jsdom** and
+**@testing-library/react** (plus `@testing-library/jest-dom` matchers) as a
+`frontend/` devDependency set.
+
+- Vitest reuses the existing `vite.config.js` / ESM / JSX pipeline — no second
+  transformer or bundler config to keep in sync with the app build.
+- `environment: 'jsdom'` gives React a real DOM to mount in, so a test asserts
+  rendered behavior (one card per item, placeholder on photo error, empty
+  state) instead of grepping source strings.
+- Testing Library queries by role/label/text, so assertions track what the
+  user sees rather than component internals.
+- fetch is stubbed with Vitest's built-in `vi.stubGlobal('fetch', …)`; no mock
+  server dependency for the single `GET /api/items` endpoint.
+- Frontend tests live under `frontend/` (co-located `*.test.jsx`, run via an
+  `npm test` script), because the runner is frontend-scoped. This deliberately
+  does not follow the Go `tests/` layout; each language's tooling owns its
+  tests.
+- Once Vitest covers the same branches, **retire
+  `tests/frontend/ing_020_app_test.mjs`** — keeping both is duplicate
+  maintenance.
+
+**Decision — Go:** stay stdlib-first. No assertion framework is added.
+
+- `testify` is rejected: the suite is intentionally stdlib-consistent, and
+  swapping `t.Fatalf`-style table tests for it is churn, not coverage.
+- `goleak` is rejected for now: the app spawns no long-lived goroutines of its
+  own to leak.
+- One additive test type needs no dependency: a stdlib fuzz target
+  (`testing.F` / `go test -fuzz`) on `ParseTaggingResult` — a parser of
+  untrusted model output is the textbook fuzz case.
+- `govulncheck` is the one non-stdlib Go tool accepted, to scan the (large)
+  Gin/pure-Go-SQLite indirect dependency tree for known CVEs.
+- `golangci-lint` and a coverage gate are left for later; neither is needed to
+  close a current gap.
+
+**Hard constraint:** every addition above is a `devDependency` or a stdlib
+tool — build/test-time only. Nothing ships in the embedded binary or runs at
+runtime, so `00-overview.md`'s fully-local constraint and
+`07-architecture.md`'s single-binary runtime model are untouched.
+
+Rejected alternatives:
+- **Jest** — a second transformer/config alongside Vite for no benefit over
+  Vitest in a Vite project.
+- **Playwright / Cypress (component or E2E)** — heavy for a single-user
+  localhost app, and the Go integration tests already boot the real binary and
+  exercise the embedded SPA + API end to end.
+- **MSW** — overkill for one endpoint; add only if the API surface grows
+  enough that hand-stubbing `fetch` becomes noisy.
+- **happy-dom** — defaults to jsdom; revisit only if the suite is slow enough
+  to matter.
+- **Storybook** — no component library or design system to document.
+
+Follow-ups (to be ticketed after this entry lands): the frontend tooling setup
+(`vitest`/`jsdom`/Testing Library devDeps, `test` config, `npm test`), and the
+retirement of the superseded `tests/frontend/ing_020_app_test.mjs`.
+
+## Frontend embed placeholder: track `frontend/dist/index.html`, hide local builds with `skip-worktree`
+
+`go:embed` fails to compile when its pattern matches no files, and the Vite
+build output (`frontend/dist/`) is gitignored as generated output, so a fresh
+checkout would have nothing for the embed to match. ING-021 therefore commits
+a small placeholder at `frontend/dist/index.html` and keeps it tracked via a
+`.gitignore` negation (`frontend/dist/*` plus `!frontend/dist/index.html` —
+the negation cannot be written against a directory exclusion such as
+`frontend/dist/`, because git will not re-include a file whose parent
+directory is excluded).
+
+The cost is that a real `npm run build` overwrites the tracked placeholder
+with the built entry, which references content-hashed assets under
+`frontend/dist/assets/` that stay gitignored. Committing that built
+`index.html` would ship an entry pointing at assets missing from a fresh
+checkout, so the overwrite must never be committed. Chosen handling: once the
+placeholder is staged/committed, run
+`git update-index --skip-worktree frontend/dist/index.html`. Git then ignores
+the working-tree overwrite — the committed blob remains the placeholder —
+while the working tree can hold the real built entry, so `go build` embeds and
+serves the actual UI locally. Undo with
+`git update-index --no-skip-worktree frontend/dist/index.html` when the
+placeholder content itself needs to change. This is a local index flag only:
+it changes nothing in the committed repository, and a fresh clone that runs
+`npm run build` will see the placeholder appear modified unless it sets the
+same flag.
+
+Rejected alternatives:
+- Track `frontend/dist/.gitkeep` with Vite `build.emptyOutDir: false`:
+  permanently clean `git status`, but a fresh checkout then has no
+  `index.html`, so `/` 404s instead of showing the "frontend not built"
+  placeholder, and it still needs a non-default Vite setting.
+- Commit the real built `index.html`: broken on a fresh checkout, since it
+  references hashed assets that are not in git.
+- Commit all of `frontend/dist/`: contradicts `07-architecture.md`'s
+  "generated, gitignored" build output and puts build churn in history for no
+  benefit.
+
+## Ingest→DB wiring: direct call, no provider/service abstraction yet
+`cmd/ingest` calls `internal/store` directly to persist a `Processor.Outcome`
+as a catalog row — no intermediate service layer, queue, or provider
+interface. `cmd/ingest` is currently the only writer, and abstracting for a
+hypothetical second writer (e.g. a future Gin route that lets a user manually
+re-tag or re-submit an item) buys nothing today and adds a layer with no
+second implementation to validate it against.
+
+Revisit when a second writer actually exists — extract the shared
+persistence logic behind an interface at that point, not before. Until then,
+`internal/store`'s exported functions are the only integration surface.
+
 ## Env var auto load
 the .env vars are autoloaded using dotenv package. both in server and ingest
 

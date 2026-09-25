@@ -21,7 +21,10 @@ ingest
 
 # --- Frontend (Vite/React) ---
 frontend/node_modules/
-frontend/dist/
+frontend/dist/*
+# Keep the placeholder tracked so go:embed always has a match on a fresh
+# checkout; a real `npm run build` replaces it locally (ING-021).
+!frontend/dist/index.html
 frontend/.vite/
 frontend/*.local
 

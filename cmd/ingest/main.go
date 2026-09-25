@@ -14,8 +14,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"wardrobe/internal/catalog"
 	"wardrobe/internal/config"
+	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -34,6 +37,12 @@ func main() {
 	if len(os.Args) < 2 {
 		log.Fatalf("usage: ingest <photo-path> [photo-path...]")
 	}
+
+	st, err := store.Open(store.DefaultDBPath)
+	if err != nil {
+		log.Fatalf("startup: open store: %v", err)
+	}
+	defer st.Close()
 
 	opts := []tagging.Option{
 		tagging.WithTemperature(func() float64 { return cfg.VLMTemperature }),
@@ -84,6 +93,18 @@ func main() {
 				os.Exit(1)
 			}
 			fmt.Println(string(jsonBytes))
+
+			if outcome.Flagged {
+				continue
+			}
+
+			// Shared rollback-safe create (ING-028); the ingest path
+			// supplies no notes yet. Failures still surface in the
+			// existing CLI style: log "persist <path>" and exit 1.
+			if _, err := catalog.Create(st, catalog.PhotosDir, outcome.ItemID, outcome.PhotoPath, outcome.Result, ""); err != nil {
+				log.Printf("persist %s: %v", photoPath, err)
+				os.Exit(1)
+			}
 		}
 	}
 }
@@ -108,7 +129,7 @@ func expandPaths(arg string) ([]string, error) {
 		if entry.IsDir() {
 			continue
 		}
-		ext := filepath.Ext(entry.Name())
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
 		if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" {
 			paths = append(paths, filepath.Join(arg, entry.Name()))
 		}

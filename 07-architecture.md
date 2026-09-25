@@ -18,6 +18,38 @@ process. The Vite frontend build is embedded into the Go binary with
 - **Image storage:** filesystem, under `data/photos/`; path stored in
   the item's `photo_path` field per `04-data-schema.md`
 
+### Catalog write API (interactive create/edit)
+
+The UI write path from `06-decisions.md` ("Interactive catalog create/edit
+UI"). All routes are local, no auth:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/items/photo` | multipart photo upload; stages the file, runs the local VLM tagging pipeline, returns a **non-persisted draft** (tagging fields + a photo reference) |
+| `POST` | `/api/items` | persist a confirmed draft: move the staged photo into `data/photos/`, insert the catalog row |
+| `GET` | `/api/items/:id` | one item, for the edit form |
+| `PUT` | `/api/items/:id` | update the mutable fields (all tagging fields + `notes`) |
+
+- Validation reuses the taxonomy tables already in `internal/tagging`
+  (`ParseTaggingResult`): an invalid field is `400` with the field named, an
+  unknown id is `404`.
+- `id`, `added_date`, and the photo are immutable via `PUT`.
+- No delete route in Phase 1.
+- Staged uploads live in a gitignored runtime staging directory under `data/`
+  and are removed on save or failed create (`06-decisions.md`).
+
+### Taxonomy read route (create/edit forms)
+
+`GET /api/taxonomy` returns the closed vocabulary the forms must offer —
+categories with their valid subcategories, the color palette, patterns, warmth
+tiers, and formality — derived from the same tables `internal/tagging`
+validates against. It exists so the browser does not hand-duplicate
+`03-taxonomy.md` (`06-decisions.md`).
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/taxonomy` | closed enum vocabulary for the create/edit forms |
+
 ## Frontend
 - **Framework:** React, built with Vite (SPA, not Next.js — no SSR/API
   routes needed for a single-user localhost app)
@@ -44,19 +76,17 @@ wardrobe/
 ├── 06-decisions.md
 ├── 07-architecture.md
 │
-├── agents/                      # canonical role definitions — kept identical
-│   │				 # to .opencode/agents/ by hand; not auto-generated
+├── agents/                      # canonical role definitions (single source)
 │   ├── planner.md
 │   ├── coder.md
 │   ├── tester.md
 │   └── reviewer.md
 │
 ├── .opencode/
-│   └── agents/                  # what opencode actually loads — same content
-│       ├── planner.md           # as agents/*.md, tracked separately since
-│       ├── coder.md             # this is the enforced copy and the
-│       ├── tester.md            # this is the enforced copy and the
-│       └── reviewer.md          # in history in their own right
+│   └── agents -> ../agents      # symlink to agents/ (Linux); what opencode
+│                                # loads. Git stores it as a symlink (120000);
+│                                # on Windows it may check out as a plain file,
+│                                # so keep the two in sync by hand there.
 │
 ├── backlog/                     # one file per ticket, board state via
 │   └── <TICKET-ID>.md           # a `**Status:**` line (02-agile-process.md)
@@ -67,6 +97,7 @@ wardrobe/
 │
 ├── internal/
 │   ├── tagging/                 # VLM client, serialization, taxonomy validation
+│   ├── catalog/                 # shared photo+row persistence (CLI + API)
 │   ├── store/                   # GORM models + sqlite access
 │   └── api/                     # Gin handlers
 │
@@ -78,7 +109,8 @@ wardrobe/
 │
 ├── data/                        # runtime, personal, gitignored entirely
 │   ├── wardrobe.db              # your actual catalog + your garment photos —
-│   └── photos/                  # never belongs in git history
+│   ├── photos/                  # never belongs in git history
+│   └── ingest-staging/          # transient UI uploads; removed on save/failure
 │
 ├── logs/                        # runtime logs (startup warnings — e.g. the
 │   └── ...                      # VLM_REQUEST_DELAY_MS misconfig warning —
@@ -100,10 +132,14 @@ different:
   permission block already hardcodes `0*.md` as a glob (deny-edit for
   Planner/Tester/Reviewer, deny for Coder). Moving them means updating
   four permission blocks to `docs/0*.md` for no functional gain.
-- **`.opencode/agents/` is tracked, not ignored** — it's generated from
-  `agents/*.md`, but it's also where the actual enforced permissions
-  live, so having it in git history (and diffable) matters more than
-  treating it as a build artifact.
+- **`.opencode/agents/` is a symlink to `agents/`, not a second copy** — on
+  Linux it resolves to the same `agents/*.md`, so the canonical role files are
+  the single source of truth and there is nothing to keep in sync. Git tracks
+  it as a symlink (mode `120000`), not as duplicated file contents. Windows
+  checkouts may not honor the link — git can materialize it as a plain file
+  holding the target path — so on Windows the `agents/` and `.opencode/agents/`
+  copies must be kept in sync by hand. That's a machine/platform caveat, not a
+  project convention.
 - **`data/` is fully gitignored**, db included — it's real wardrobe
   photos and personal cataloging data, not something to commit even
   privately.

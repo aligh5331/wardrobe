@@ -51,6 +51,20 @@ written to the DB. Reject and retry (or flag for manual review) on:
 - missing required field (`subcategory` and `pattern` included — neither
   may be null or omitted)
 
+## Interactive tagging (web UI)
+
+The same model, prompt, and taxonomy validation apply when tagging is
+triggered from the catalog UI (`07-architecture.md` "Catalog write API")
+instead of the CLI. The only difference is the human-in-the-loop step:
+
+- The pipeline runs against an uploaded photo and returns a **draft**; nothing
+  is written to the catalog until the user confirms.
+- The user may correct any field before saving; the corrected record is
+  validated against the same enums (`03-taxonomy.md`) as a model output.
+- A failed parse follows the existing retry-once policy; if the retry also
+  fails, the error is surfaced in the UI for the user to retry or pick another
+  photo, rather than being flagged and persisted.
+
 ## Acceptance criteria (for the first ingestion ticket)
 ```
 Given a garment photo at a given path

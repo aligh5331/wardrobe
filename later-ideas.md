@@ -6,6 +6,67 @@ spec (`03-taxonomy.md` / `04-data-schema.md` / `05-vlm-tagging-spec.md`)
 via the normal change process. Deliberately **not** numbered into the
 `0*.md` sequence so it's never mistaken for one of those.
 
+
+---
+## Outfit visualization via local image generation
+
+### Problem
+
+The Phase 3 recommender's output is a set of `item_id`s (e.g. top +
+bottom + shoes) — a list of names, not something Ali can glance at and
+judge. A text list ("gray sweater + navy chinos + white sneakers")
+takes more effort to evaluate than a picture, especially when deciding
+quickly whether a suggested outfit is actually worth wearing.
+
+### Idea
+
+Once Phase 3 exists and picks a set of `item_id`s for a given day, feed
+the corresponding garment photos already in the catalog (`photo_path`
+per `04-data-schema.md`) as reference images into a local image
+generation/editing model, with a prompt like "compose these items as a
+flat-lay outfit" or "show these items worn together," and return a
+single composite image alongside the text recommendation.
+
+Qwen-Image 2.1 (Alibaba, Apache 2.0, open-weight) is one candidate:
+multi-image reference editing, native 2K output, and it's from the
+same model family as the Qwen3-VL-8B already used for tagging, so
+tooling/serving familiarity carries over. Any other open-weight
+local-hostable image editing model would work the same way — this
+idea isn't tied to that specific model.
+
+### Explicitly out of scope for now
+
+- Not a Phase 1 or Phase 2 concern — this is Phase 3 (recommender)
+  territory, and the recommender itself doesn't exist yet.
+- Not related to `05-vlm-tagging-spec.md` or ingestion in any way —
+  that pipeline stays a pure recognition/tagging task on the existing
+  8B VLM. This idea is entirely on the output side of a future
+  recommender.
+- No generation of garment photos for the catalog itself — one real
+  photo per garment (flat lay/hanger) stays the ingestion input,
+  unchanged. This idea only composes *already-cataloged* photos into
+  an outfit visualization, never invents or replaces a garment photo.
+
+### Open question worth flagging before building
+
+- **Resource cost, not just "fully local" compliance.** An
+  image-generation model in the Qwen-Image 2.1 class is ~20B
+  parameters — a materially heavier local inference workload than the
+  8B tagging VLM, and a different kind (diffusion, not
+  recognition/classification). Self-hosting it satisfies the "fully
+  local" hard constraint on paper, but the real question is whether it
+  fits on the same hardware as the tagging VLM, or needs to run at a
+  different time / on different hardware. This needs a deliberate
+  GPU/VRAM budget decision before it's built, not an assumption that
+  "open-weight" means "cheap to add."
+
+### Open threads this could eventually feed
+
+- Outfit log and feedback loop (above) — a generated visualization of
+  a recommended outfit is a natural thing to show Ali *before* logging
+  whether it was actually worn and how it rated, closing the loop
+  between recommendation and feedback with something more concrete
+  than a name list.
 ---
 
 ## Outfit log and feedback loop
@@ -179,6 +240,7 @@ be right or wrong.
 - General subcategory accuracy — already flagged as "weaker than category
   accuracy" in `05-vlm-tagging-spec.md`'s known limitations section
 
+---
 ## Multi-user / multi-tenant support
 
 ### Direction

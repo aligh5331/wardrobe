@@ -2,14 +2,16 @@
 
 // Process-level acceptance tests for ING-012: the `cmd/ingest` CLI wires
 // config -> VLM client -> ING-005 processor and drives garment photos
-// through it. Like the ING-001 integration tests these spawn the real
-// binary with `go run`, here against a stub VLM, so they are build-tagged.
+// through it. Like the ING-001 integration tests these build the real
+// binary and run it against a stub VLM, so they are build-tagged.
 //
-// The CLI's default attempt logger writes logs/vlm-attempts.jsonl
-// relative to its working directory (the repo root), exactly as ING-012
-// documents. Each test records the log size before its run and asserts
-// only on the bytes appended by that run, so pre-existing runtime log
-// lines are never disturbed (logs/ is gitignored runtime data).
+// The CLI fixes its DB/photo/log paths relative to its working directory
+// (data/wardrobe.db, data/photos/, logs/vlm-attempts.jsonl), and post-
+// ING-018 it persists every non-flagged outcome. Each test therefore runs
+// the binary with its working directory set to an isolated t.TempDir()
+// project root, so the run's data/ and logs/ land under that root instead
+// of the repo's real data/ and logs/ (personal runtime data). The binary
+// itself is still built from the module root.
 package tests
 
 import (
@@ -51,14 +53,36 @@ func ing012Env(overrides map[string]string) map[string]string {
 	return env
 }
 
-// runIngest runs the documented invocation (`ingest <path...>`) with the
-// given env contract and returns stdout, stderr, and the exit code.
-func runIngest(t *testing.T, env map[string]string, args ...string) (stdout, stderr string, exitCode int) {
+// ing012Harness is an isolated project root plus the compiled ingest
+// binary that runs with that root as its working directory.
+type ing012Harness struct {
+	root string
+	bin  string
+}
+
+// newING012Harness compiles cmd/ingest from the module root and returns a
+// harness whose working directory is a fresh t.TempDir() project root, so
+// the run's data/wardrobe.db, data/photos/, and logs/vlm-attempts.jsonl
+// resolve under that root rather than the repo's real data/ and logs/.
+func newING012Harness(t *testing.T) *ing012Harness {
 	t.Helper()
 
-	cmdArgs := append([]string{"run", "./cmd/ingest"}, args...)
-	cmd := exec.Command("go", cmdArgs...)
-	cmd.Dir = moduleRoot(t)
+	bin := filepath.Join(t.TempDir(), "ingest")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/ingest")
+	build.Dir = moduleRoot(t)
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build ./cmd/ingest: %v\n%s", err, out)
+	}
+	return &ing012Harness{root: t.TempDir(), bin: bin}
+}
+
+// run executes the documented invocation (`ingest <path...>`) with the
+// given env contract and returns stdout, stderr, and the exit code.
+func (h *ing012Harness) run(t *testing.T, env map[string]string, args ...string) (stdout, stderr string, exitCode int) {
+	t.Helper()
+
+	cmd := exec.Command(h.bin, args...)
+	cmd.Dir = h.root
 	cmd.Env = envWith(env)
 
 	var out, errBuf bytes.Buffer
@@ -193,18 +217,18 @@ func ing012Validate(t *testing.T, obj map[string]any) tagging.TaggingResult {
 	return res
 }
 
-// ing012DBInfo snapshots data/wardrobe.db so an unexpected write is
-// detectable. The pipeline must not create or touch the catalog store.
+// ing012DBInfo snapshots the isolated run's data/wardrobe.db, so callers
+// read the run's own catalog store without touching the repo's real one.
 type ing012DBInfo struct {
 	exists bool
 	size   int64
 	mod    time.Time
 }
 
-func ing012DBState(t *testing.T) ing012DBInfo {
+func ing012DBState(t *testing.T, h *ing012Harness) ing012DBInfo {
 	t.Helper()
 
-	info, err := os.Stat(filepath.Join(moduleRoot(t), "data", "wardrobe.db"))
+	info, err := os.Stat(filepath.Join(h.root, "data", "wardrobe.db"))
 	if errors.Is(err, os.ErrNotExist) {
 		return ing012DBInfo{}
 	}
@@ -214,16 +238,17 @@ func ing012DBState(t *testing.T) ing012DBInfo {
 	return ing012DBInfo{exists: true, size: info.Size(), mod: info.ModTime()}
 }
 
-func ing012LogPath(t *testing.T) string {
+// ing012LogPath is the attempt log under the isolated harness root.
+func ing012LogPath(t *testing.T, h *ing012Harness) string {
 	t.Helper()
-	return filepath.Join(moduleRoot(t), "logs", "vlm-attempts.jsonl")
+	return filepath.Join(h.root, "logs", "vlm-attempts.jsonl")
 }
 
-// ing012LogSize is the pre-run byte offset of the shared attempt log.
-func ing012LogSize(t *testing.T) int64 {
+// ing012LogSize is the pre-run byte offset of the isolated attempt log.
+func ing012LogSize(t *testing.T, h *ing012Harness) int64 {
 	t.Helper()
 
-	info, err := os.Stat(ing012LogPath(t))
+	info, err := os.Stat(ing012LogPath(t, h))
 	if errors.Is(err, os.ErrNotExist) {
 		return 0
 	}
@@ -234,10 +259,13 @@ func ing012LogSize(t *testing.T) int64 {
 }
 
 // ing012AppendedLines returns the raw JSONL lines appended after offset.
-func ing012AppendedLines(t *testing.T, offset int64) []string {
+func ing012AppendedLines(t *testing.T, h *ing012Harness, offset int64) []string {
 	t.Helper()
 
-	raw, err := os.ReadFile(ing012LogPath(t))
+	raw, err := os.ReadFile(ing012LogPath(t, h))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		t.Fatalf("read attempt log: %v", err)
 	}
@@ -253,11 +281,11 @@ func ing012AppendedLines(t *testing.T, offset int64) []string {
 	return lines
 }
 
-func ing012AppendedAttempts(t *testing.T, offset int64) []tagging.AttemptLog {
+func ing012AppendedAttempts(t *testing.T, h *ing012Harness, offset int64) []tagging.AttemptLog {
 	t.Helper()
 
 	var entries []tagging.AttemptLog
-	for _, line := range ing012AppendedLines(t, offset) {
+	for _, line := range ing012AppendedLines(t, h, offset) {
 		var e tagging.AttemptLog
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
 			t.Fatalf("appended log line %q is not an AttemptLog: %v", line, err)
@@ -280,17 +308,16 @@ func writeIng012Photo(t *testing.T, dir, name string, data []byte) string {
 // AC1: Given a garment photo path and a reachable VLM configured from the
 // environment / When the photo is passed through the ingestion pipeline /
 // Then a JSON object is emitted with all seven validated tagging fields
-// plus the original photo_path / And no catalog row is written and no
-// data/wardrobe.db is created.
+// plus the original photo_path.
 func TestING012_AC1_SinglePhotoEmitsValidatedJSON(t *testing.T) {
 	tax := loadTaxonomy(t)
 	valid, want := validTaggingPayload(t, tax)
 	photo := writePhoto(t, "garment.jpg", []byte("ING012-AC1-JPEG-BYTES"))
 
+	h := newING012Harness(t)
 	srv, vlm := newING012VLM(t, func(int, ing012Request) string { return valid })
-	dbBefore := ing012DBState(t)
 
-	stdout, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
+	stdout, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr:\n%s", code, stderr)
 	}
@@ -316,9 +343,6 @@ func TestING012_AC1_SinglePhotoEmitsValidatedJSON(t *testing.T) {
 	if n := vlm.count(); n != 1 {
 		t.Errorf("VLM requests = %d, want 1", n)
 	}
-	if got := ing012DBState(t); got != dbBefore {
-		t.Errorf("data/wardrobe.db changed (%+v -> %+v); the pipeline must not write the catalog store", dbBefore, got)
-	}
 	if strings.Contains(stderr, "registry") || strings.Contains(stderr, "wardrobe.db") {
 		t.Errorf("stderr mentions the catalog store:\n%s", stderr)
 	}
@@ -343,7 +367,8 @@ func TestING012_AC2_ConfigClientWiring(t *testing.T) {
 			return valid
 		})
 
-		stdout, stderr, code := runIngest(t, ing012Env(map[string]string{
+		h := newING012Harness(t)
+		stdout, stderr, code := h.run(t, ing012Env(map[string]string{
 			"VLM_URL":         srv.URL,
 			"VLM_TEMPERATURE": "0.9",
 		}), photo)
@@ -375,7 +400,8 @@ func TestING012_AC2_ConfigClientWiring(t *testing.T) {
 		writeIng012Photo(t, dir, "b.jpg", []byte("ING012-AC2-SER-B"))
 
 		srv, vlm := newING012VLM(t, func(int, ing012Request) string { return valid })
-		_, stderr, code := runIngest(t, ing012Env(map[string]string{
+		h := newING012Harness(t)
+		_, stderr, code := h.run(t, ing012Env(map[string]string{
 			"VLM_URL":                srv.URL,
 			"VLM_SERIALIZE_REQUESTS": "true",
 			"VLM_REQUEST_DELAY_MS":   "500",
@@ -401,7 +427,8 @@ func TestING012_AC2_ConfigClientWiring(t *testing.T) {
 		writeIng012Photo(t, dir, "b.jpg", []byte("ING012-AC2-NOSER-B"))
 
 		srv, vlm := newING012VLM(t, func(int, ing012Request) string { return valid })
-		_, stderr, code := runIngest(t, ing012Env(map[string]string{
+		h := newING012Harness(t)
+		_, stderr, code := h.run(t, ing012Env(map[string]string{
 			"VLM_URL":                srv.URL,
 			"VLM_SERIALIZE_REQUESTS": "false",
 			"VLM_REQUEST_DELAY_MS":   "500",
@@ -439,8 +466,9 @@ func TestING012_AC3_RetryPolicyDrivenThroughPipeline(t *testing.T) {
 		return valid
 	})
 
-	offset := ing012LogSize(t)
-	stdout, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
+	h := newING012Harness(t)
+	offset := ing012LogSize(t, h)
+	stdout, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr:\n%s", code, stderr)
 	}
@@ -461,7 +489,7 @@ func TestING012_AC3_RetryPolicyDrivenThroughPipeline(t *testing.T) {
 	}
 
 	// The log format is ING-005's: exactly its 9 fields per line.
-	lines := ing012AppendedLines(t, offset)
+	lines := ing012AppendedLines(t, h, offset)
 	if len(lines) != 2 {
 		t.Fatalf("appended attempt-log lines = %d, want 2 (failed attempt + success)", len(lines))
 	}
@@ -485,7 +513,7 @@ func TestING012_AC3_RetryPolicyDrivenThroughPipeline(t *testing.T) {
 		}
 	}
 
-	entries := ing012AppendedAttempts(t, offset)
+	entries := ing012AppendedAttempts(t, h, offset)
 	itemID, _ := rec["item_id"].(string)
 	if entries[0].Attempt != 1 || entries[0].FailureType != tagging.FailureTypeMalformedJSON {
 		t.Errorf("attempt 1 = %+v, want attempt 1 with failure_type %q", entries[0], tagging.FailureTypeMalformedJSON)
@@ -524,8 +552,9 @@ func TestING012_AC4_FlaggedPhotoDoesNotAbortBatch(t *testing.T) {
 		return valid
 	})
 
-	offset := ing012LogSize(t)
-	stdout, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), dir)
+	h := newING012Harness(t)
+	offset := ing012LogSize(t, h)
+	stdout, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), dir)
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (a flagged photo must not abort the batch); stderr:\n%s", code, stderr)
 	}
@@ -554,7 +583,7 @@ func TestING012_AC4_FlaggedPhotoDoesNotAbortBatch(t *testing.T) {
 	if n := vlm.count(); n != 3 {
 		t.Errorf("VLM requests = %d, want 3 (2 for the flagged photo + 1 for the rest)", n)
 	}
-	if entries := ing012AppendedAttempts(t, offset); len(entries) != 3 {
+	if entries := ing012AppendedAttempts(t, h, offset); len(entries) != 3 {
 		t.Errorf("appended attempt-log lines = %d, want 3", len(entries))
 	}
 }
@@ -572,9 +601,10 @@ func TestING012_AC5_UnreachableSurfacesDistinctly(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	photo := writePhoto(t, "garment.jpg", []byte("ING012-AC5-JPEG-BYTES"))
-	offset := ing012LogSize(t)
+	h := newING012Harness(t)
+	offset := ing012LogSize(t, h)
 
-	stdout, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
+	stdout, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
 	if code == 0 {
 		t.Fatalf("exit code = 0, want nonzero for an unreachable VLM")
 	}
@@ -587,7 +617,7 @@ func TestING012_AC5_UnreachableSurfacesDistinctly(t *testing.T) {
 	if strings.TrimSpace(stdout) != "" {
 		t.Errorf("stdout = %q, want no tagged JSON for a hard failure", stdout)
 	}
-	if entries := ing012AppendedAttempts(t, offset); len(entries) != 0 {
+	if entries := ing012AppendedAttempts(t, h, offset); len(entries) != 0 {
 		t.Errorf("appended attempt-log lines = %d, want 0 (unreachable is not a malformed-output flag)", len(entries))
 	}
 }
@@ -608,9 +638,10 @@ func TestING012_Edge_UnreachableOnAttempt2LeavesAttempt1Log(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	photo := writePhoto(t, "garment.jpg", []byte("ING012-EDGE-ATTEMPT2"))
-	offset := ing012LogSize(t)
+	h := newING012Harness(t)
+	offset := ing012LogSize(t, h)
 
-	stdout, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
+	stdout, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
 	if code == 0 {
 		t.Fatalf("exit code = 0, want nonzero when the retry is unreachable")
 	}
@@ -627,7 +658,7 @@ func TestING012_Edge_UnreachableOnAttempt2LeavesAttempt1Log(t *testing.T) {
 		t.Errorf("stdout = %q, want no tagged JSON and no flagged record", stdout)
 	}
 
-	entries := ing012AppendedAttempts(t, offset)
+	entries := ing012AppendedAttempts(t, h, offset)
 	if len(entries) != 1 || entries[0].Attempt != 1 || entries[0].FailureType != tagging.FailureTypeMalformedJSON {
 		t.Errorf("appended attempts = %+v, want only attempt 1's malformed_json record (the CLI relies on the log for the partial attempt)", entries)
 	}
@@ -641,7 +672,8 @@ func TestING012_AC6_InvocationAndExitCodes(t *testing.T) {
 	t.Run("missing photo exits nonzero naming it", func(t *testing.T) {
 		missing := filepath.Join(t.TempDir(), "does-not-exist.jpg")
 
-		stdout, stderr, code := runIngest(t, ing012Env(nil), missing)
+		h := newING012Harness(t)
+		stdout, stderr, code := h.run(t, ing012Env(nil), missing)
 		if code == 0 {
 			t.Fatalf("exit code = 0, want nonzero for a missing photo")
 		}
@@ -656,7 +688,8 @@ func TestING012_AC6_InvocationAndExitCodes(t *testing.T) {
 	t.Run("missing VLM_URL exits nonzero naming it", func(t *testing.T) {
 		photo := writePhoto(t, "garment.jpg", []byte("ING012-AC6-JPEG-BYTES"))
 
-		_, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": ""}), photo)
+		h := newING012Harness(t)
+		_, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": ""}), photo)
 		if code == 0 {
 			t.Fatalf("exit code = 0, want a startup error for a missing VLM_URL")
 		}
@@ -674,7 +707,8 @@ func TestING012_AC6_InvocationAndExitCodes(t *testing.T) {
 		writeIng012Photo(t, dir, "two.png", []byte("ING012-AC6-DIR-2"))
 
 		srv, _ := newING012VLM(t, func(int, ing012Request) string { return valid })
-		stdout, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), dir)
+		h := newING012Harness(t)
+		stdout, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), dir)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr:\n%s", code, stderr)
 		}
@@ -694,7 +728,8 @@ func TestING012_Edges(t *testing.T) {
 		photo := writePhoto(t, "garment.jpg", []byte("ING012-EDGE-EMPTY"))
 
 		srv, _ := newING012VLM(t, func(int, ing012Request) string { return valid })
-		stdout, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
+		h := newING012Harness(t)
+		stdout, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr:\n%s", code, stderr)
 		}
@@ -721,7 +756,8 @@ func TestING012_Edges(t *testing.T) {
 		}
 
 		srv, _ := newING012VLM(t, func(int, ing012Request) string { return valid })
-		stdout, stderr, code := runIngest(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
+		h := newING012Harness(t)
+		stdout, stderr, code := h.run(t, ing012Env(map[string]string{"VLM_URL": srv.URL}), photo)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr:\n%s", code, stderr)
 		}

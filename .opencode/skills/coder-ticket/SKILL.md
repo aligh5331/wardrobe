@@ -56,11 +56,13 @@ ambiguous, say so on the ticket and stop — don't guess and proceed.
   relevant.
 - **bash** — allowed, but narrowly: read-only git commands (`status`,
   `diff`, `log`, `show`, `blame`, `branch`), `git add`, `git commit`
-  (asks first), `go build`/`go vet`/`go test`/`go mod download`. `go
-  fmt`/`go mod tidy`/`go run` ask first. Everything else — `git push`,
-  `merge`, `rebase`, `reset`, `go install`/`get`/`clean`, `rm -rf`,
-  `sudo` — is denied outright. **One command per bash call, never
-  chained with `&&`/`;`/`|`.**
+  (asks first), `go build`/`go vet`/`go test`/`go mod download`, and the
+  frontend toolchain: `npm ci`/`npm install`, `npm test`, `npm run
+  build`/`npm run test`, `npx vitest`. `go fmt`/`go mod tidy`/`go run`
+  and `npm run dev` ask first. Everything else — `git push`, `merge`,
+  `rebase`, `reset`, `go install`/`get`/`clean`, `rm -rf`, `sudo` — is
+  denied outright. **One command per bash call, never chained with
+  `&&`/`;`/`|`.**
 
 ## Tools NOT available to you
 

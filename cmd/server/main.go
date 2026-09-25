@@ -1,19 +1,26 @@
 // Command server runs the wardrobe backend: it validates the VLM/LLM
-// env var contract at startup, then serves the local API and embedded
-// frontend (07-architecture.md).
+// env var contract at startup, opens the local catalog, then serves the
+// read-only API and the embedded frontend over Gin on a configurable
+// listen address (07-architecture.md).
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
+	"wardrobe/frontend"
+	"wardrobe/internal/api"
 	"wardrobe/internal/config"
+	"wardrobe/internal/store"
+	"wardrobe/internal/tagging"
 
 	_ "github.com/joho/godotenv/autoload" // .env autoload
 )
 
-const addr = ":8080"
-
 func main() {
+	addr := flag.String("addr", ":8080", "listen address")
+	flag.Parse()
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("startup: %v", err)
@@ -23,6 +30,30 @@ func main() {
 		log.Printf("startup warning: %s", warning)
 	}
 
-	log.Printf("listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, http.NewServeMux()))
+	st, err := store.Open(store.DefaultDBPath)
+	if err != nil {
+		log.Fatalf("startup: open store: %v", err)
+	}
+	defer st.Close()
+
+	router := api.New(st, api.DefaultPhotosDir, api.WithTagging(taggingProcessor(cfg), api.DefaultStagingDir))
+	api.ServeFrontend(router, frontend.Dist)
+
+	log.Printf("listening on %s", *addr)
+	log.Fatal(http.ListenAndServe(*addr, router))
+}
+
+// taggingProcessor builds the local VLM tagging pipeline from config exactly
+// as cmd/ingest does: same client options (temperature source, optional
+// serialization) and same retry-once Processor. The upload route reuses it
+// with no second model or policy (05-vlm-tagging-spec.md "Interactive
+// tagging (web UI)").
+func taggingProcessor(cfg *config.Config) *tagging.Processor {
+	opts := []tagging.Option{
+		tagging.WithTemperature(func() float64 { return cfg.VLMTemperature }),
+	}
+	if cfg.VLMSerializeRequests {
+		opts = append(opts, tagging.WithSerialization(cfg.VLMRequestDelayMS))
+	}
+	return tagging.NewProcessor(tagging.NewClient(cfg.VLMURL, cfg.VLMAPIKey, opts...))
 }
