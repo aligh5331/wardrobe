@@ -161,6 +161,8 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
 | `VLM_SERIALIZE_REQUESTS` | no              | `false` | boolean parsed with `strconv.ParseBool` (`1/t/T/TRUE/true/True`, `0/f/F/FALSE/false/False`); unset or empty is `false`; any other value is a startup error naming the variable. `true` forces a global one-at-a-time queue/mutex around all VLM calls   |
 | `VLM_REQUEST_DELAY_MS`   | no              | `0`     | integer; negative values are clamped to 0 with a startup warning; non-numeric is a startup error naming the variable. If >0, wait this long after each VLM response before sending the next request. Only meaningful when `VLM_SERIALIZE_REQUESTS=true` |
 | `VLM_TEMPERATURE`        | no              | `0.4`   | sampling temperature sent on each VLM tagging request; finite number in `0.0`–`1.0` inclusive. Anything else (non-numeric, NaN/Inf, negative, or >1.0) is a startup error naming the variable. `0.0` is valid for deliberate deterministic runs         |
+| `LOG_LEVEL`              | no              | `info`  | minimum level emitted; one of `debug`, `info`, `warn`, `error` (case-insensitive). Anything else is a startup error naming the variable                                                                                                                |
+| `LOG_FORMAT`             | no              | `text`  | handler format; one of `text`, `json` (case-insensitive). `text` for interactive local runs, `json` for machine parsing. Anything else is a startup error naming the variable                                                                            |
 
 ### VLM request behavior
 - **Default:** concurrent requests to `VLM_URL`, no artificial
@@ -178,6 +180,33 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
   warning** and proceeds with no delay applied (not a hard error).
 - **Negative delay:** a negative `VLM_REQUEST_DELAY_MS` is treated as `0`
   and logged as a **startup warning** — not stored as-is, not a hard error.
+
+## Logging
+
+Runtime logging uses the Go standard library `log/slog` — no third-party
+logging dependency, keeping the single-embedded-binary runtime model.
+
+- **Sinks:** process stderr and `logs/app.log` (append/create), both
+  gitignored. `logs/vlm-attempts.jsonl` (ING-005) is a separate, structured
+  attempt trail and is unchanged; the two are not merged.
+- **Level and format:** `LOG_LEVEL` sets the minimum level; `LOG_FORMAT`
+  selects a text handler (interactive local runs) or a JSON handler
+  (machine parsing). Both apply to stderr and `logs/app.log` alike.
+- **HTTP access log:** every request to the Gin engine logs method, matched
+  route, status, latency, response size, client IP, and a generated
+  `request_id`. The id is also returned to the client as an `X-Request-ID`
+  response header. Level follows the status class: 2xx/3xx `info`, 4xx
+  `warn`, 5xx `error`.
+- **Correlation:** server-side error logs carry the access log's
+  `request_id` and, where one exists, the tagged `item_id` — so an API
+  request can be joined to its `logs/vlm-attempts.jsonl` records, which are
+  already keyed by `item_id`.
+- **Failure to open `logs/app.log`:** startup logs a warning and continues
+  with stderr only; it is not a hard error.
+- **Out of Phase 1:** metrics endpoints, distributed tracing, and any
+  remote/hosted telemetry. The fully-local hard constraint (`00-overview.md`)
+  rules out hosted log/error services outright.
+
 ## Open / future
 - `LLM_URL`/`LLM_API_KEY` have no consumer until Phase 3 (recommender).
   Don't wire up calls to it in Phase 1 tickets.

@@ -2,6 +2,50 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Structured logging: stdlib `log/slog`, local stderr + file, env-configurable level/format
+
+The backend's logging was ad-hoc: stdlib `log.Printf`/`log.Fatalf` in two
+entrypoints, a GORM stderr adapter, and — the actual gap — no HTTP request
+logging at all (`gin.New()` + `gin.Recovery()`, no logger middleware). VLM
+attempts already had their own JSONL trail (`logs/vlm-attempts.jsonl`,
+ING-005); nothing else was observable.
+
+Decision:
+
+- **Logger:** Go's standard library `log/slog`. No third-party logging
+  dependency, so the single-embedded-binary runtime model
+  (`07-architecture.md`) is untouched.
+- **Sinks:** process stderr and `logs/app.log` (append). Both gitignored.
+  The ING-005 attempt log stays separate and unchanged.
+- **Config:** `LOG_LEVEL` (`debug`/`info`/`warn`/`error`, default `info`) and
+  `LOG_FORMAT` (`text`/`json`, default `text`), validated at startup in the
+  same strict style as the other `VLM_*` vars — an unrecognized value is a
+  startup error naming the variable, not a silent fallback. These are new
+  rows in `07-architecture.md`'s env contract.
+- **Access logging:** one Gin middleware logs method, matched route, status,
+  latency, response size, client IP, and a generated `request_id`, at a level
+  chosen from the status class. The same id is returned as `X-Request-ID`.
+- **Correlation:** server-side error logs attach `request_id` and the tagged
+  `item_id` where one exists, joining an API request to its VLM attempt
+  records.
+- **Robustness:** failing to open `logs/app.log` warns and falls back to
+  stderr only; it does not block startup.
+
+Rejected:
+
+- **A third-party logger (`zap`/`zerolog`)** — performance is irrelevant at
+  single-user localhost scale, and `slog` is stdlib. Adding a dependency buys
+  nothing here.
+- **`gin.Logger()` as-is** — writes an unstructured line to stdout; the ingest
+  CLI's stdout is a strict one-JSON-object-per-line channel (ING-012), and
+  the format carries none of the correlation fields.
+- **Prometheus `/metrics`** — a sizeable dependency tree and a new route, and
+  it only pays off once something scrapes it; nothing does locally today.
+- **OpenTelemetry tracing** — one local process and a single HTTP hop to the
+  VLM; a collector/backend is pure overhead.
+- **Hosted error tracking (Sentry et al.)** — violates the fully-local hard
+  constraint (`00-overview.md`) outright.
+
 ## Taxonomy exported to the browser via `GET /api/taxonomy`, not a bundled copy
 
 The interactive create/edit forms need the valid enum values, but
