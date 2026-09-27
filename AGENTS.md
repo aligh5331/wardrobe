@@ -9,16 +9,19 @@ responsibilities, permissions, inputs/outputs, and definitions of done live in
 
 ## 1. Project context
 
-This project is currently in **Phase 1: the ingestion/cataloging pipeline**.
+This project is currently in **Phase 2: the weather signal**.
 
-The current product is a local wardrobe catalog that turns one photo of one
-garment into validated structured data. Weather integration and outfit
-recommendation are later phases and are not current implementation scope.
+Phase 1 (the local wardrobe catalog that turns one photo of one garment into
+validated structured data) is done. Phase 2 adds current weather and today's
+forecast from Open-Meteo for one location chosen in the web UI
+(`07-architecture.md` "Weather"). Outfit recommendation is Phase 3 and is not
+current implementation scope.
 
 The following constraints are architectural decisions, not suggestions:
 
 - Inference and catalog data remain local. Do not introduce cloud inference,
-  hosted model APIs, or cloud training.
+  hosted model APIs, or cloud training. Open-Meteo, called from the backend
+  only, is the single allowed external service (`06-decisions.md`).
 - Do not introduce model fine-tuning. Phase 1 uses the local Qwen3-VL-8B
   tagging model with constrained prompting.
 - Input is one garment per photo, as a flat lay or hanger photo. Outfit-photo
@@ -153,12 +156,12 @@ same approved change, as required by the taxonomy specification.
 
 Agents work on the current ticket, not on the whole product.
 
-For Phase 1:
+For Phase 2:
 
-- Implement the ingestion/cataloging pipeline.
-- Do not start weather integration.
+- Implement the weather signal as specified in `07-architecture.md` "Weather".
+- Keep Phase 1 ingestion behavior intact; change it only via an approved spec.
 - Do not start the outfit recommender.
-- Do not wire the Phase 3 `LLM_URL`/`LLM_API_KEY` into Phase 1 behavior.
+- Do not wire the Phase 3 `LLM_URL`/`LLM_API_KEY` into any current behavior.
 - Do not introduce multi-tenant/auth architecture.
 - Do not turn parked ideas from `later-ideas.md` into implementation work
   without an approved spec.

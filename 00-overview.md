@@ -10,7 +10,7 @@ A fully local personal wardrobe system, built in three layers:
 3. **Recommender** — picks weather-appropriate, color-coordinated outfits from the catalog
 
 ## Current phase
-**Phase 1 only: the ingestion/cataloging pipeline.** Layers 2 and 3 are out of scope until phase 1 is built, used for a couple of weeks, and proven accurate enough on the real wardrobe.
+**Phase 2: the weather signal.** Phase 1 (ingestion/cataloging pipeline) is built and done. Phase 2 adds Layer 2: current weather plus today's forecast for one user-chosen location, via Open-Meteo, shown in the UI (`07-architecture.md` "Weather"). Layer 3 (recommender) stays out of scope until Phase 2 is built.
 
 ## Roles
 - **Ali (human, orchestrator)** — captures garment photos, makes judgment calls on ambiguous items, reviews all agent output, owns infra/tooling decisions. Not writing implementation code directly.
@@ -18,7 +18,7 @@ A fully local personal wardrobe system, built in three layers:
 - **Coding agents** (run via Ali's own agent harness / Claude Code, outside this project) — execute backlog tickets against the specs produced here. See `01-agentic-workflow.md` for the agent roles and `agents/*.md` for each role's definition.
 
 ## Hard constraints (do not relitigate — see `06-decisions.md` for the full log)
-- Fully local. No cloud services, no hosted inference APIs, nothing trained in the cloud.
+- Fully local. No cloud services, no hosted inference APIs, nothing trained in the cloud. Single scoped exception: weather data from Open-Meteo (`06-decisions.md`).
 - No model fine-tuning. Use a base local VLM (Qwen3-VL-8B) with constrained prompting against `03-taxonomy.md`.
 - One photo per garment (flat lay/hanger) — not outfit photos on a person.
 

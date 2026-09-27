@@ -1,6 +1,6 @@
 # Architecture
 
-Stack and runtime decisions for the ingestion pipeline. See
+Stack and runtime decisions for the ingestion pipeline and weather signal. See
 `06-decisions.md` for the why; this file is the concrete contract a
 coding agent implements against.
 
@@ -50,6 +50,43 @@ validates against. It exists so the browser does not hand-duplicate
 |---|---|---|
 | `GET` | `/api/taxonomy` | closed enum vocabulary for the create/edit forms |
 
+### Weather (Phase 2)
+
+Backend-only Open-Meteo client in `internal/weather`; the browser never calls
+Open-Meteo (`06-decisions.md`). No API key, no new env var.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/weather` | current conditions + today's forecast for the saved location |
+| `GET` | `/api/weather/cities?q=<text>` | city search via Open-Meteo geocoding; returns up to 10 `{name, country, admin1, latitude, longitude}` |
+| `GET` | `/api/weather/location` | saved location, or the Tehran default |
+| `PUT` | `/api/weather/location` | save `{name, country, latitude, longitude}` (`04-data-schema.md`) |
+
+`GET /api/weather` response:
+
+```json
+{
+  "location": {"name": "Tehran", "country": "Iran", "latitude": 35.69439, "longitude": 51.42151},
+  "current": {"temperature_c": 21.3, "apparent_temperature_c": 20.1, "weather_code": 3, "precipitation_mm": 0.0},
+  "today": {"temperature_min_c": 14.2, "temperature_max_c": 25.8, "precipitation_probability_max": 10, "weather_code": 3}
+}
+```
+
+- Fields map 1:1 to Open-Meteo `current=temperature_2m,apparent_temperature,weather_code,precipitation`
+  and `daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,weather_code`
+  with `timezone=auto`, `forecast_days=1`. `weather_code` is the raw WMO code;
+  mapping it to a label/icon is a frontend concern.
+- Open-Meteo unreachable, non-2xx, or unparseable: `502` with an error message.
+  Weather failures never affect catalog routes or startup.
+- `cities`: empty or whitespace-only `q` is `400`; zero results is `200` with `[]`.
+- `PUT location`: missing `name`, or `latitude`/`longitude` out of range, is
+  `400` with the field named.
+- Outbound HTTP timeout: 10 s.
+
+UI: a small weather panel showing location name, current temperature, apparent
+temperature, condition, and today's min/max and precipitation chance, with a
+"change location" city search that saves via `PUT /api/weather/location`.
+
 ## Frontend
 - **Framework:** React, built with Vite (SPA, not Next.js — no SSR/API
   routes needed for a single-user localhost app)
@@ -98,6 +135,7 @@ wardrobe/
 ├── internal/
 │   ├── tagging/                 # VLM client, serialization, taxonomy validation
 │   ├── catalog/                 # shared photo+row persistence (CLI + API)
+│   ├── weather/                 # Open-Meteo forecast + geocoding client (Phase 2)
 │   ├── store/                   # GORM models + sqlite access
 │   └── api/                     # Gin handlers
 │
@@ -180,4 +218,4 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
   and logged as a **startup warning** — not stored as-is, not a hard error.
 ## Open / future
 - `LLM_URL`/`LLM_API_KEY` have no consumer until Phase 3 (recommender).
-  Don't wire up calls to it in Phase 1 tickets.
+  Don't wire up calls to it in Phase 1 or Phase 2 tickets.

@@ -2,6 +2,51 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Phase 2 scope = weather signal; Phase 1 closed
+
+Phase 1 (ING-001..ING-037) is done and in use. Phase 2 builds Layer 2 from
+`00-overview.md`: weather for one location, shown in the UI and available to
+the Phase 3 recommender later. Supersedes "Phase 1 scope = ingestion pipeline
+only" below for current scope; that entry stays as history.
+
+In scope: current conditions + today's daily forecast, a location picker with
+city search in the web UI, persisted location. Not in scope: multi-day
+forecasts, multiple saved locations, weather history, alerts, any outfit logic
+(Phase 3), any use of `LLM_URL`.
+
+## Weather provider: Open-Meteo, backend-proxied, no API key
+
+Open-Meteo forecast (`api.open-meteo.com/v1/forecast`) and geocoding
+(`geocoding-api.open-meteo.com/v1/search`) APIs. Free, no key, no account, so
+no new secret in `.env`. The Go backend makes every Open-Meteo call; the
+browser only talks to `localhost`. Keeps the one external dependency in one
+package (`internal/weather`), testable with `httptest`, and keeps the SPA free
+of third-party origins.
+
+Data leaving the machine: the saved location's coordinates and city search
+text. Never catalog data or photos. This is the scoped exception already
+recorded in "Weather signal is an acknowledged exception to 'fully local'".
+
+No cache in Phase 2: one fetch per `GET /api/weather`, well under Open-Meteo's
+free-tier limits for one user. Add a short TTL cache if the recommender starts
+calling it per request.
+
+Rejected: OpenWeatherMap/WeatherAPI (API key required); calling Open-Meteo
+directly from the browser (second network surface, CORS-dependent, untestable
+from Go).
+
+## Weather location: chosen in the web UI, persisted in SQLite, default Tehran
+
+Location is set by the user through a city search in the UI, not by env vars.
+It is stored in SQLite (`04-data-schema.md` "Settings — weather location") so
+it survives restarts and travels with the rest of the install's data. Until
+the user picks one, the default is **Tehran, Iran** (`35.69439, 51.42151`), so
+weather always has a location and there is no "unconfigured" state to handle.
+
+Rejected: `WEATHER_CITY` / `LAT` / `LONG` env vars with precedence rules — a
+restart-to-change setting for something the user changes from the UI, plus a
+precedence/conflict path that only exists because of two config sources.
+
 ## Taxonomy exported to the browser via `GET /api/taxonomy`, not a bundled copy
 
 The interactive create/edit forms need the valid enum values, but

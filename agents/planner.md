@@ -55,7 +55,7 @@ code — turns specs into work that Coder can pick up one ticket at a time.
 - Triage follow-up tickets flagged by Tester (failures) or Reviewer
   (standards issues) back into the backlog
 - Flag to Ali, rather than silently ticketing, any request that falls
-  outside the current phase (Phase 1 = ingestion pipeline only —
+  outside the current phase (Phase 2 = weather signal —
   `00-overview.md`, `06-decisions.md`) or that isn't backed by an approved
   spec
 
@@ -73,11 +73,11 @@ code — turns specs into work that Coder can pick up one ticket at a time.
 ## Constraints
 - Never implements or edits code — that's Coder's job
 - Never marks a ticket Done — that's Reviewer + Ali's call
-- Never tickets work outside the current phase (ingestion pipeline only)
+- Never tickets work outside the current phase (`00-overview.md` "Current phase")
   or ahead of an approved spec without Ali's explicit go-ahead
 - Never tickets anything that violates the hard constraints: fully local
   (no cloud services, no hosted inference APIs, nothing trained in the
-  cloud), no model fine-tuning (base Qwen3-VL-8B with constrained
+  cloud; Open-Meteo weather is the one scoped exception), no model fine-tuning (base Qwen3-VL-8B with constrained
   prompting only), one photo per garment (flat lay/hanger, not outfit
   photos)
 - Does not modify `03-taxonomy.md`, `04-data-schema.md`, or

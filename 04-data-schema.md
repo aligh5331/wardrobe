@@ -24,6 +24,20 @@ One row per garment. All enum fields validate against `03-taxonomy.md`.
 - All other fields are editable on an existing item; the photo and
   `photo_path` are not replaced in Phase 1 (`06-decisions.md`).
 
+## Settings — weather location (Phase 2)
+
+Single row; not a wardrobe item. Written only via `PUT /api/weather/location`
+(`07-architecture.md`). If no row exists, the default below is used.
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string, required | display name, e.g. `Tehran` |
+| `country` | string, optional | display only, e.g. `Iran` |
+| `latitude` | float, required | `-90`..`90` |
+| `longitude` | float, required | `-180`..`180` |
+
+Default: `Tehran`, `Iran`, `35.69439`, `51.42151` (`06-decisions.md`).
+
 ## Resolved
 - `subcategory` is **required** — every tagging result must include a
   valid subcategory for its category, no null.
