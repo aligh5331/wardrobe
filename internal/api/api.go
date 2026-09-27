@@ -21,6 +21,7 @@ import (
 	"wardrobe/internal/catalog"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
+	"wardrobe/internal/weather"
 )
 
 // DefaultPhotosDir is where stored garment photos live
@@ -53,6 +54,7 @@ var acceptedPhotoExts = map[string]bool{
 type config struct {
 	processor  *tagging.Processor
 	stagingDir string
+	weather    *weather.Client
 }
 
 // Option customises the engine New builds.
@@ -67,6 +69,14 @@ func WithTagging(p *tagging.Processor, stagingDir string) Option {
 		c.processor = p
 		c.stagingDir = stagingDir
 	}
+}
+
+// WithWeather wires the Open-Meteo client used by GET /api/weather and
+// GET /api/weather/cities. cmd/server passes the production client; tests
+// point one at httptest servers. Without it those two routes return 503;
+// the location routes need only the store.
+func WithWeather(w *weather.Client) Option {
+	return func(c *config) { c.weather = w }
 }
 
 // dateFormat is the added_date rendering the read-only contract fixes:
@@ -97,7 +107,134 @@ func New(st *store.Store, photosDir string, opts ...Option) *gin.Engine {
 	r.POST("/api/items/photo", uploadPhoto(cfg.processor, cfg.stagingDir))
 	r.GET("/api/photos/:filename", servePhoto(photosDir))
 	r.GET("/api/taxonomy", taxonomy)
+	r.GET("/api/weather", getWeather(st, cfg.weather))
+	r.GET("/api/weather/cities", searchCities(cfg.weather))
+	r.GET("/api/weather/location", getLocation(st))
+	r.PUT("/api/weather/location", putLocation(st))
 	return r
+}
+
+// locationResponse is the {name, country, latitude, longitude} shape of
+// 07-architecture.md "Weather (Phase 2)"; store.WeatherLocation's ID is
+// never exposed.
+type locationResponse struct {
+	Name      string  `json:"name"`
+	Country   string  `json:"country"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+func toLocation(l store.WeatherLocation) locationResponse {
+	return locationResponse{l.Name, l.Country, l.Latitude, l.Longitude}
+}
+
+// getWeather serves {location, current, today} for the saved location. A
+// DB failure is 500; any Open-Meteo failure (weather.ErrUpstream) is 502.
+// Null upstream values stay nil pointers and serialize as JSON null.
+func getWeather(st *store.Store, w *weather.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if w == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "weather is not configured"})
+			return
+		}
+		loc, err := st.WeatherLocation()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load weather location"})
+			return
+		}
+		f, err := w.Forecast(c.Request.Context(), loc.Latitude, loc.Longitude)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "weather service unavailable: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, struct {
+			Location locationResponse `json:"location"`
+			weather.Forecast
+		}{toLocation(loc), f})
+	}
+}
+
+// searchCities proxies Open-Meteo geocoding. Empty/whitespace q is 400 with
+// no upstream call; zero matches is [] (SearchCities never returns nil on
+// success); upstream failure is 502.
+func searchCities(w *weather.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		q := strings.TrimSpace(c.Query("q"))
+		if q == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "q is required"})
+			return
+		}
+		if w == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "weather is not configured"})
+			return
+		}
+		cities, err := w.SearchCities(c.Request.Context(), q)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "city search unavailable: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, cities)
+	}
+}
+
+func getLocation(st *store.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		loc, err := st.WeatherLocation()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load weather location"})
+			return
+		}
+		c.JSON(http.StatusOK, toLocation(loc))
+	}
+}
+
+// putLocationRequest uses pointers for latitude/longitude so an absent
+// field (nil) is rejected while an explicit 0 is valid (07-architecture.md
+// "PUT location": absent is not 0).
+type putLocationRequest struct {
+	Name      string   `json:"name"`
+	Country   string   `json:"country"`
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+}
+
+// putLocation saves the location. Malformed JSON, an absent coordinate, or
+// a store validation error (name, range; store.ErrInvalidLocation names the
+// field) is 400 with nothing written; a DB failure is 500. Success returns
+// the location as saved (store trims name/country), read back from the DB.
+func putLocation(st *store.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body putLocationRequest
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body: " + err.Error()})
+			return
+		}
+		if body.Latitude == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "latitude is required"})
+			return
+		}
+		if body.Longitude == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "longitude is required"})
+			return
+		}
+		err := st.SaveWeatherLocation(store.WeatherLocation{
+			Name: body.Name, Country: body.Country, Latitude: *body.Latitude, Longitude: *body.Longitude,
+		})
+		if errors.Is(err, store.ErrInvalidLocation) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save weather location"})
+			return
+		}
+		loc, err := st.WeatherLocation()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load weather location"})
+			return
+		}
+		c.JSON(http.StatusOK, toLocation(loc))
+	}
 }
 
 // ServeFrontend registers the embedded-SPA fallback on r, which must already
