@@ -76,11 +76,17 @@ Open-Meteo (`06-decisions.md`). No API key, no new env var.
   and `daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,weather_code`
   with `timezone=auto`, `forecast_days=1`. `weather_code` is the raw WMO code;
   mapping it to a label/icon is a frontend concern.
-- Open-Meteo unreachable, non-2xx, or unparseable: `502` with an error message.
-  Weather failures never affect catalog routes or startup.
+- Open-Meteo unreachable, non-2xx, or unparseable, on either `/api/weather` or
+  `/api/weather/cities`: `502` with an error message. Weather failures never
+  affect catalog routes or startup.
+- Local DB read/write failure on any weather route: `500`, same as catalog routes.
 - `cities`: empty or whitespace-only `q` is `400`; zero results is `200` with `[]`.
-- `PUT location`: missing `name`, or `latitude`/`longitude` out of range, is
-  `400` with the field named.
+  Geocoding is called with `name=<q>&count=10` only (Open-Meteo default
+  language); a result missing `country` or `admin1` returns `""` for it.
+- `PUT location`: `name` missing, empty, or whitespace-only; `latitude` or
+  `longitude` missing (absent is not `0`) or out of range; or malformed JSON
+  is `400` with the field named. Success is `200` with the saved location
+  `{name, country, latitude, longitude}`.
 - Outbound HTTP timeout: 10 s.
 
 UI: a small weather panel showing location name, current temperature, apparent
@@ -120,10 +126,8 @@ wardrobe/
 │   └── reviewer.md
 │
 ├── .opencode/
-│   └── agents -> ../agents      # symlink to agents/ (Linux); what opencode
-│                                # loads. Git stores it as a symlink (120000);
-│                                # on Windows it may check out as a plain file,
-│                                # so keep the two in sync by hand there.
+│   └── agents/                  # tracked copy of agents/; what opencode loads.
+│                                # Keep in sync with agents/ by hand.
 │
 ├── backlog/                     # one file per ticket, board state via
 │   └── <TICKET-ID>.md           # a `**Status:**` line (02-agile-process.md)
@@ -170,14 +174,10 @@ different:
   permission block already hardcodes `0*.md` as a glob (deny-edit for
   Planner/Tester/Reviewer, deny for Coder). Moving them means updating
   four permission blocks to `docs/0*.md` for no functional gain.
-- **`.opencode/agents/` is a symlink to `agents/`, not a second copy** — on
-  Linux it resolves to the same `agents/*.md`, so the canonical role files are
-  the single source of truth and there is nothing to keep in sync. Git tracks
-  it as a symlink (mode `120000`), not as duplicated file contents. Windows
-  checkouts may not honor the link — git can materialize it as a plain file
-  holding the target path — so on Windows the `agents/` and `.opencode/agents/`
-  copies must be kept in sync by hand. That's a machine/platform caveat, not a
-  project convention.
+- **`.opencode/agents/` is a tracked copy of `agents/`, not a symlink** —
+  symlinks did not survive Windows checkouts, so both directories hold the
+  same `*.md` files and git tracks both. `agents/` is canonical; any change to
+  it is copied to `.opencode/agents/` in the same commit.
 - **`data/` is fully gitignored**, db included — it's real wardrobe
   photos and personal cataloging data, not something to commit even
   privately.
