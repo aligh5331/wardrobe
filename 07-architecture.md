@@ -76,6 +76,12 @@ Open-Meteo (`06-decisions.md`). No API key, no new env var.
   and `daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,weather_code`
   with `timezone=auto`, `forecast_days=1`. `weather_code` is the raw WMO code;
   mapping it to a label/icon is a frontend concern.
+- A `null` or absent value for any requested variable is **missing data, not
+  an error**: Open-Meteo returns `null` when the model has no value for that
+  variable/location. The field is `null` in the `/api/weather` response (never
+  `0`), and the UI shows `-` in its place (`- °C`, `- %`, condition `-`). A
+  missing `current` object or empty `daily` arrays is a malformed response
+  (`502`).
 - Open-Meteo unreachable, non-2xx, or unparseable, on either `/api/weather` or
   `/api/weather/cities`: `502` with an error message. Weather failures never
   affect catalog routes or startup.

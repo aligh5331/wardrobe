@@ -49,8 +49,10 @@ func TestING041_DailyIndexZeroAndWireKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (weather.Today{TemperatureMinC: 14.2, TemperatureMaxC: 25.8, PrecipitationProbabilityMax: 10, WeatherCode: 3}); f.Today != want {
-		t.Errorf("today = %+v, want index 0 %+v", f.Today, want)
+	td := f.Today
+	if td.TemperatureMinC == nil || *td.TemperatureMinC != 14.2 || td.TemperatureMaxC == nil || *td.TemperatureMaxC != 25.8 ||
+		td.PrecipitationProbabilityMax == nil || *td.PrecipitationProbabilityMax != 10 || td.WeatherCode == nil || *td.WeatherCode != 3 {
+		t.Errorf("today = %+v, want index 0 {14.2 25.8 10 3}", td)
 	}
 	if got, want := ing041Keys(t, f.Current), []string{"apparent_temperature_c", "precipitation_mm", "temperature_c", "weather_code"}; !slices.Equal(got, want) {
 		t.Errorf("current keys = %v, want %v", got, want)

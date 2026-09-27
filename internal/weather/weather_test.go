@@ -2,10 +2,12 @@ package weather
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -53,9 +55,30 @@ func TestForecast(t *testing.T) {
 	if q := got.Query(); q.Encode() != want.Encode() {
 		t.Errorf("query = %s\nwant    %s", q.Encode(), want.Encode())
 	}
-	exp := Forecast{Current{21.3, 20.1, 3, 0.4}, Today{14.2, 25.8, 10, 61}}
-	if f != exp {
+	exp := Forecast{Current{p(21.3), p(20.1), p(3), p(0.4)}, Today{p(14.2), p(25.8), p(10), p(61)}}
+	if !reflect.DeepEqual(f, exp) {
 		t.Errorf("got %+v, want %+v", f, exp)
+	}
+}
+
+func p[T any](v T) *T { return &v }
+
+// null/absent variables are missing data, not an error: nil, JSON null (07-architecture.md).
+func TestForecastNulls(t *testing.T) {
+	srv, _, _ := serve(t, 200, `{
+ "current":{"temperature_2m":null,"weather_code":3},
+ "daily":{"temperature_2m_min":[null],"temperature_2m_max":[25.8],"precipitation_probability_max":[null],"weather_code":[null]}}`)
+	f, err := New(srv.URL, "", time.Second).Forecast(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := Forecast{Current{nil, nil, p(3), nil}, Today{nil, p(25.8), nil, nil}}
+	if !reflect.DeepEqual(f, exp) {
+		t.Errorf("got %+v, want %+v", f, exp)
+	}
+	b, _ := json.Marshal(f)
+	if want := `{"current":{"temperature_c":null,"apparent_temperature_c":null,"weather_code":3,"precipitation_mm":null},"today":{"temperature_min_c":null,"temperature_max_c":25.8,"precipitation_probability_max":null,"weather_code":null}}`; string(b) != want {
+		t.Errorf("json = %s\nwant   %s", b, want)
 	}
 }
 
@@ -121,7 +144,7 @@ func TestUpstreamErrors(t *testing.T) {
 		start := time.Now()
 		f, err := c.Forecast(context.Background(), 1, 2)
 		check(t, tc.name+"/forecast", err, tc.msg)
-		if f != (Forecast{}) {
+		if !reflect.DeepEqual(f, Forecast{}) {
 			t.Errorf("%s/forecast: partial result %+v", tc.name, f)
 		}
 		if tc.forecastOnly {

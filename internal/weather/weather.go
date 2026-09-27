@@ -32,19 +32,21 @@ const maxCities = 10
 var ErrUpstream = errors.New("weather upstream failure")
 
 // Current is the current-conditions block; weather_code is the raw WMO code.
+// nil = Open-Meteo returned null/absent (missing data, not an error;
+// 07-architecture.md) and serializes as JSON null, never 0.
 type Current struct {
-	TemperatureC         float64 `json:"temperature_c"`
-	ApparentTemperatureC float64 `json:"apparent_temperature_c"`
-	WeatherCode          int     `json:"weather_code"`
-	PrecipitationMM      float64 `json:"precipitation_mm"`
+	TemperatureC         *float64 `json:"temperature_c"`
+	ApparentTemperatureC *float64 `json:"apparent_temperature_c"`
+	WeatherCode          *int     `json:"weather_code"`
+	PrecipitationMM      *float64 `json:"precipitation_mm"`
 }
 
-// Today is today's daily forecast (Open-Meteo daily index 0).
+// Today is today's daily forecast (Open-Meteo daily index 0); nil as in Current.
 type Today struct {
-	TemperatureMinC             float64 `json:"temperature_min_c"`
-	TemperatureMaxC             float64 `json:"temperature_max_c"`
-	PrecipitationProbabilityMax int     `json:"precipitation_probability_max"`
-	WeatherCode                 int     `json:"weather_code"`
+	TemperatureMinC             *float64 `json:"temperature_min_c"`
+	TemperatureMaxC             *float64 `json:"temperature_max_c"`
+	PrecipitationProbabilityMax *int     `json:"precipitation_probability_max"`
+	WeatherCode                 *int     `json:"weather_code"`
 }
 
 // Forecast is the current + today pair returned by Client.Forecast.
@@ -92,16 +94,16 @@ func (c *Client) Forecast(ctx context.Context, lat, lon float64) (Forecast, erro
 	}
 	var body struct {
 		Current *struct {
-			Temperature2m       float64 `json:"temperature_2m"`
-			ApparentTemperature float64 `json:"apparent_temperature"`
-			WeatherCode         int     `json:"weather_code"`
-			Precipitation       float64 `json:"precipitation"`
+			Temperature2m       *float64 `json:"temperature_2m"`
+			ApparentTemperature *float64 `json:"apparent_temperature"`
+			WeatherCode         *int     `json:"weather_code"`
+			Precipitation       *float64 `json:"precipitation"`
 		} `json:"current"`
 		Daily struct {
-			Min         []float64 `json:"temperature_2m_min"`
-			Max         []float64 `json:"temperature_2m_max"`
-			PrecipProb  []int     `json:"precipitation_probability_max"`
-			WeatherCode []int     `json:"weather_code"`
+			Min         []*float64 `json:"temperature_2m_min"`
+			Max         []*float64 `json:"temperature_2m_max"`
+			PrecipProb  []*int     `json:"precipitation_probability_max"`
+			WeatherCode []*int     `json:"weather_code"`
 		} `json:"daily"`
 	}
 	if err := c.get(ctx, c.forecastBase+"/v1/forecast?"+q.Encode(), &body); err != nil {
