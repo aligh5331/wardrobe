@@ -153,12 +153,15 @@ func (s *Store) WeatherLocation() (WeatherLocation, error) {
 	return loc, nil
 }
 
-// SaveWeatherLocation validates loc and replaces the single location row.
-// Presence of latitude/longitude (absent vs 0) is the caller's check; here 0
-// is a valid value. On a validation error nothing is written.
+// SaveWeatherLocation trims name/country, validates loc, and replaces the
+// single location row. Presence of latitude/longitude (absent vs 0) is the
+// caller's check; here 0 is a valid value. On a validation error nothing is
+// written.
 func (s *Store) SaveWeatherLocation(loc WeatherLocation) error {
+	loc.Name = strings.TrimSpace(loc.Name)
+	loc.Country = strings.TrimSpace(loc.Country)
 	switch {
-	case strings.TrimSpace(loc.Name) == "":
+	case loc.Name == "":
 		return fmt.Errorf("%w: name is required", ErrInvalidLocation)
 	case !(loc.Latitude >= -90 && loc.Latitude <= 90): // negated form also rejects NaN
 		return fmt.Errorf("%w: latitude must be between -90 and 90", ErrInvalidLocation)

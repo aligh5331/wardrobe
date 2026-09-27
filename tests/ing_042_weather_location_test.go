@@ -85,6 +85,15 @@ func TestING042_AC2_AC3_AC4_SaveReplaceSingleRow(t *testing.T) {
 	}
 }
 
+// Name and country are trimmed on save (Ali decision, follow-up).
+func TestING042_TrimsNameAndCountry(t *testing.T) {
+	s, _ := ing042Open(t)
+	if err := s.SaveWeatherLocation(store.WeatherLocation{Name: "  Paris\t", Country: " France\n", Latitude: 48.85341, Longitude: 2.3488}); err != nil {
+		t.Fatalf("Save = %v", err)
+	}
+	ing042Same(t, ing042Read(t, s), store.WeatherLocation{Name: "Paris", Country: "France", Latitude: 48.85341, Longitude: 2.3488})
+}
+
 // AC5: invalid input names the field and leaves the stored value (or default) unchanged.
 func TestING042_AC5_ValidationNamesFieldNoWrite(t *testing.T) {
 	cases := []struct {

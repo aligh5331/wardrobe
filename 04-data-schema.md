@@ -31,8 +31,8 @@ Single row; not a wardrobe item. Written only via `PUT /api/weather/location`
 
 | Field | Type | Notes |
 |---|---|---|
-| `name` | string, required | display name, e.g. `Tehran` |
-| `country` | string, optional | display only, e.g. `Iran` |
+| `name` | string, required | display name, e.g. `Tehran`; trimmed on save, whitespace-only rejected |
+| `country` | string, optional | display only, e.g. `Iran`; trimmed on save |
 | `latitude` | float, required | `-90`..`90` |
 | `longitude` | float, required | `-180`..`180` |
 
