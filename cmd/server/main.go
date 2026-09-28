@@ -26,6 +26,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("startup: %v", err)
 	}
+	if err := cfg.RequireLLMURL(); err != nil {
+		log.Fatalf("startup: %v", err)
+	}
 
 	for _, warning := range cfg.Warnings() {
 		log.Printf("startup warning: %s", warning)
