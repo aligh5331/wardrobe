@@ -55,7 +55,7 @@ code — turns specs into work that Coder can pick up one ticket at a time.
 - Triage follow-up tickets flagged by Tester (failures) or Reviewer
   (standards issues) back into the backlog
 - Flag to Ali, rather than silently ticketing, any request that falls
-  outside the current phase (Phase 2 = weather signal —
+  outside the current phase (Phase 3 = outfit recommender —
   `00-overview.md`, `06-decisions.md`) or that isn't backed by an approved
   spec
 

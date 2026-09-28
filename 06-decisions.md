@@ -2,6 +2,91 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Phase 3 scope = outfit recommender; Phase 2 closed
+
+Phase 2 (ING-041..ING-045) is done and in use. Phase 3 builds Layer 3 from
+`00-overview.md`: on a button click, suggest **3 outfits** for today, each with
+a one-line reason. Inputs: today's weather (Phase 2), an optional formality
+(`03-taxonomy.md`), and optional free text from the user.
+
+An outfit is **top + bottom + footwear** (required), plus **outerwear** when
+the weather rule requires it, plus optional headwear/accessories.
+
+Not in scope: outfit log / "I wore this", ratings, garment embeddings / vector
+search, outfit image generation (all stay in `later-ideas.md`), multi-day
+planning, recommending for a date other than today.
+
+## Recommender approach: rule filter retrieves candidates, local LLM picks
+
+Two steps:
+
+1. **Deterministic filter (Go):** today's weather maps to allowed warmth tiers
+   and whether outerwear is required (thresholds below); the catalog is
+   filtered by those tiers and by formality when one is chosen. This is the
+   retrieval step — plain SQL/Go over the catalog, no vectors.
+2. **Local text LLM (`LLM_URL`):** receives only the candidates' ids and tags
+   (no photos, no notes), the weather, formality, and user text, and returns 3
+   outfits as strict JSON. It does the part rules are bad at: color
+   coordination and interpreting the free text.
+
+Why: a pure rule engine cannot read "wedding" or "long walk" and color
+matching by hand-written rules is brittle; sending the whole catalog to the
+LLM invites weather-inappropriate picks and a larger prompt. Filtering first
+keeps the LLM's job small and its hard failures (wrong warmth) impossible.
+
+Rejected for now: embedding-based RAG (FashionCLIP + `sqlite-vec`). A catalog
+of a few hundred items needs no vector search, and the valuable retrieval
+target — highly rated past outfits — needs the outfit log, which is not built.
+Revisit together with the outfit log (`later-ideas.md`).
+
+## Weather → warmth thresholds: starting values, to be tuned from real use
+
+Based on `current.apparent_temperature_c` (feels-like):
+
+| Feels-like | Allowed warmth tiers | Outerwear |
+|---|---|---|
+| < 10 °C | `medium`, `heavy` | required |
+| 10–20 °C (inclusive) | `light`, `medium` | optional |
+| > 20 °C | `light` | excluded |
+
+- If today's `temperature_min_c`..`temperature_max_c` range crosses a
+  threshold, the tiers of both bands are allowed (layering for the day).
+- `precipitation_probability_max >= 50` is passed to the LLM as a hint only,
+  never a hard filter.
+- Warmth filtering applies to `top`, `bottom`, `outerwear`, `footwear`.
+  `headwear` and `accessory` are not warmth-filtered.
+- If feels-like is `null` (Phase 2 missing data), fall back to the midpoint of
+  today's min/max; if those are also `null`, apply no warmth filter and tell
+  the LLM the temperature is unknown.
+
+These numbers are deliberately simple defaults, kept as named constants in one
+place. Ali will tune them from real use; changing them is a spec edit to this
+entry, not a new env var.
+
+## Recommender output validation: retry once, then 502
+
+The LLM's JSON is untrusted, same as VLM tagging output. Every outfit must:
+use only candidate ids; contain exactly one `top`, one `bottom`, one
+`footwear`; contain one `outerwear` when required and none when excluded; have
+no duplicate ids within the outfit; and the 3 outfits must not be identical
+sets. Invalid or unparseable output is retried **once** (same prompt, nonzero
+temperature, as in the VLM policy); a second failure is `502`. An unreachable
+LLM is `502` immediately with no retry. If the candidates cannot fill a
+required slot, respond `422` naming the slot **without** calling the LLM.
+
+## LLM config: `LLM_URL` required by the server only; optional `LLM_MODEL`; fixed 120 s timeout
+
+- `LLM_URL` becomes a startup error **in `cmd/server` only**. `cmd/ingest`
+  never calls the LLM and keeps starting without it.
+- `LLM_TEMPERATURE` (optional, default `0.4`, `0.0`–`1.0`) mirrors
+  `VLM_TEMPERATURE` validation.
+- `LLM_MODEL` (optional). Empty: no `model` field is sent (llama.cpp ignores
+  it). Set: sent as-is. Needed for servers such as Ollama that require a model
+  name. When `LLM_MODEL` is empty and the LLM server rejects the request (any
+  non-2xx), the `502` message tells the user to set `LLM_MODEL`.
+- LLM requests time out after a fixed **120 s** (`502`). Not configurable;
+  add an env var only if a real model needs longer.
+
 ## Phase 2 scope = weather signal; Phase 1 closed
 
 Phase 1 (ING-001..ING-037) is done and in use. Phase 2 builds Layer 2 from
