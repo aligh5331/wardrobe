@@ -2,6 +2,46 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Agent step caps raised; tickets should be sized to fit a subagent's step budget
+
+`.opencode/agents/*.md` (and their tracked source `agents/*.md`) each set a
+`steps:` cap: the number of tool-call rounds a session gets before opencode
+forces a stop. Coder was `30`, tester `25`, planner and reviewer `15` each.
+
+Raised to coder `60`, tester `50`, planner `30`, reviewer `30`.
+
+Why: on Claude models with extended thinking (`cc/claude-sonnet-5`,
+`cc/claude-opus-5-5` via 9router), hitting the step cap mid-task made
+opencode inject a forced-stop message with an `assistant` role as the last
+message in the conversation, then immediately resend it. Anthropic rejects
+any request ending in an assistant-role message when thinking is enabled
+("assistant message prefill... conversation must end with a user message"),
+so the resend came back as a hard 400 and killed the whole session, losing
+whatever the subagent had done in the reached steps. This is a known,
+unfixed opencode bug (`anomalyco/opencode#32548`): the injected message has
+the wrong role for thinking-enabled Claude models. It cannot be worked
+around from a plugin — no hook runs late enough to intercept or drop that
+injected message before it is sent.
+
+Since the bug can't be fixed from this repo, the only available mitigation is
+avoiding the step cap in the first place: raise the ceiling, and keep
+individual coder/tester/reviewer/planner invocations small enough that a
+normal ticket finishes well under it. A single subagent call that tries to
+read the spec, implement, validate, and write notes for a multi-file ticket
+in one shot is exactly the shape that runs long enough to hit this. Prefer
+splitting a large ticket's work across more than one subagent turn (e.g. read
+and confirm scope first, then implement) over relying on a larger step
+budget alone — a bigger cap buys headroom, it does not make it safe to hand a
+subagent an unbounded task.
+
+Rejected: leaving the caps as-is (too easy to trip on a normal-sized ticket)
+and disabling extended thinking to route around the prefill restriction
+(thinking is a model quality trade-off unrelated to this bug and not ours to
+disable per-request from agent config).
+
+See `AGENTS.md` "Read before changing" / "Scope and phase discipline" for the
+related instruction to keep task delegation appropriately scoped.
+
 ## Phase 3 scope = outfit recommender; Phase 2 closed
 
 Phase 2 (ING-041..ING-045) is done and in use. Phase 3 builds Layer 3 from

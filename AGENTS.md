@@ -170,6 +170,17 @@ For Phase 3:
 If a seemingly useful improvement crosses the current phase or ticket scope,
 flag it instead of silently expanding the work.
 
+Scope discipline also applies to how work is handed to a subagent (Task
+tool). Do not hand a subagent one prompt that bundles reading the spec,
+implementing, validating, and writing handoff notes for a multi-file ticket
+in a single invocation. Each `.opencode/agents/*.md` role has a `steps:` cap
+on how many tool-call rounds one invocation gets; a task sized to need most
+or all of that budget risks hitting the cap mid-task, which can break the
+session outright on thinking-enabled Claude models (`06-decisions.md`
+"Agent step caps raised; tickets should be sized to fit a subagent's step
+budget"). Split a large ticket's work into more than one subagent turn
+instead of relying on a larger step budget to absorb an oversized task.
+
 ## 9. Data and personal information
 
 The `data/` directory contains the real wardrobe database and garment photos
