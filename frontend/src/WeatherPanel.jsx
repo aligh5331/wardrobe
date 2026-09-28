@@ -47,30 +47,137 @@ const conditionLabel = (code) => {
 const withUnit = (value, unit) =>
   value === null || value === undefined ? `- ${unit}` : `${value}${unit}`
 
+// Pull the server's named-field error out of a non-OK body, or fall back —
+// same convention as ItemAddForm.jsx.
+async function errorMessage(res, fallback) {
+  try {
+    const body = await res.json()
+    if (body?.error) return body.error
+  } catch {
+    // Non-JSON error body: keep the fallback.
+  }
+  return fallback
+}
+
 export default function WeatherPanel() {
   const [weather, setWeather] = useState(null)
   const [status, setStatus] = useState('loading')
 
-  useEffect(() => {
-    let cancelled = false
+  // ING-045 — "change location" city search, closed by default.
+  const [changing, setChanging] = useState(false)
+  const [query, setQuery] = useState('')
+  const [searchStatus, setSearchStatus] = useState('idle') // idle | loading | done | error
+  const [searchError, setSearchError] = useState('')
+  const [results, setResults] = useState([])
+  const [saveError, setSaveError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const loadWeather = () =>
     fetch('/api/weather')
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
       })
       .then((data) => {
-        if (cancelled) return
         setWeather(data)
         setStatus('ready')
       })
-      .catch(() => {
-        if (cancelled) return
-        setStatus('error')
-      })
+
+  useEffect(() => {
+    let cancelled = false
+    loadWeather().catch(() => {
+      if (cancelled) return
+      setStatus('error')
+    })
     return () => {
       cancelled = true
     }
   }, [])
+
+  const openChange = () => {
+    setChanging(true)
+    setQuery('')
+    setSearchStatus('idle')
+    setSearchError('')
+    setResults([])
+    setSaveError('')
+  }
+
+  const cancelChange = () => {
+    setChanging(false)
+    setQuery('')
+    setSearchStatus('idle')
+    setSearchError('')
+    setResults([])
+    setSaveError('')
+  }
+
+  const submitSearch = async (event) => {
+    event.preventDefault()
+    const text = query.trim()
+    if (!text) return // empty/whitespace-only: no request (backend would 400)
+
+    setSearchStatus('loading')
+    setSearchError('')
+    setSaveError('')
+
+    let res
+    try {
+      res = await fetch(`/api/weather/cities?q=${encodeURIComponent(text)}`)
+    } catch {
+      setSearchStatus('error')
+      setSearchError('Could not reach the server.')
+      return
+    }
+
+    if (!res.ok) {
+      setSearchStatus('error')
+      setSearchError(await errorMessage(res, `Could not search cities (HTTP ${res.status}).`))
+      return
+    }
+
+    const data = await res.json()
+    setResults(Array.isArray(data) ? data : [])
+    setSearchStatus('done')
+  }
+
+  const pickCity = async (city) => {
+    setSaving(true)
+    setSaveError('')
+
+    let res
+    try {
+      res = await fetch('/api/weather/location', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: city.name,
+          country: city.country,
+          latitude: city.latitude,
+          longitude: city.longitude,
+        }),
+      })
+    } catch {
+      setSaving(false)
+      setSaveError('Could not reach the server.')
+      return
+    }
+
+    if (!res.ok) {
+      setSaving(false)
+      setSaveError(await errorMessage(res, `Could not save location (HTTP ${res.status}).`))
+      return
+    }
+
+    try {
+      await loadWeather()
+    } catch {
+      // Save succeeded but the reload failed; leave the previous panel data
+      // rather than blank it — the location is saved regardless.
+    }
+    setSaving(false)
+    cancelChange()
+  }
 
   if (status === 'loading') {
     return <p className="text-sm text-gray-500">Loading weather…</p>
@@ -83,15 +190,86 @@ export default function WeatherPanel() {
   const { location, current, today } = weather
 
   return (
-    <section className="flex flex-wrap items-center gap-4 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm">
-      <span className="font-semibold text-gray-900">{location?.name ?? '-'}</span>
-      <span className="text-gray-800">{withUnit(current?.temperature_c, '°C')}</span>
-      <span className="text-gray-500">Feels like {withUnit(current?.apparent_temperature_c, '°C')}</span>
-      <span className="text-gray-500">{conditionLabel(current?.weather_code)}</span>
-      <span className="text-gray-500">
-        {withUnit(today?.temperature_min_c, '°C')} / {withUnit(today?.temperature_max_c, '°C')}
-      </span>
-      <span className="text-gray-500">{withUnit(today?.precipitation_probability_max, '%')} rain</span>
+    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm">
+      <div className="flex flex-wrap items-center gap-4">
+        <span className="font-semibold text-gray-900">{location?.name ?? '-'}</span>
+        <span className="text-gray-800">{withUnit(current?.temperature_c, '°C')}</span>
+        <span className="text-gray-500">Feels like {withUnit(current?.apparent_temperature_c, '°C')}</span>
+        <span className="text-gray-500">{conditionLabel(current?.weather_code)}</span>
+        <span className="text-gray-500">
+          {withUnit(today?.temperature_min_c, '°C')} / {withUnit(today?.temperature_max_c, '°C')}
+        </span>
+        <span className="text-gray-500">{withUnit(today?.precipitation_probability_max, '%')} rain</span>
+        {!changing && (
+          <button
+            type="button"
+            onClick={openChange}
+            className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            Change location
+          </button>
+        )}
+      </div>
+
+      {changing && (
+        <div className="flex flex-col gap-2 border-t border-gray-200 pt-2">
+          <form onSubmit={submitSearch} aria-label="Change location" className="flex gap-2">
+            <input
+              type="text"
+              aria-label="City"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="rounded border border-gray-300 px-2 py-1 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={searchStatus === 'loading' || saving}
+              className="rounded bg-gray-900 px-3 py-1 text-sm text-white disabled:opacity-50"
+            >
+              {searchStatus === 'loading' ? 'Searching…' : 'Search'}
+            </button>
+            <button
+              type="button"
+              onClick={cancelChange}
+              className="rounded border border-gray-300 px-3 py-1 text-sm"
+            >
+              Cancel
+            </button>
+          </form>
+
+          {searchStatus === 'error' && (
+            <p role="alert" className="text-sm text-red-600">
+              {searchError}
+            </p>
+          )}
+          {saveError && (
+            <p role="alert" className="text-sm text-red-600">
+              {saveError}
+            </p>
+          )}
+
+          {searchStatus === 'done' && results.length === 0 && (
+            <p className="text-sm text-gray-500">No cities found.</p>
+          )}
+
+          {searchStatus === 'done' && results.length > 0 && (
+            <ul className="flex flex-col gap-1">
+              {results.map((city, index) => (
+                <li key={`${city.name}-${city.latitude}-${city.longitude}-${index}`}>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => pickCity(city)}
+                    className="rounded border border-gray-200 px-2 py-1 text-left text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {[city.name, city.admin1, city.country].filter(Boolean).join(', ')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </section>
   )
 }
