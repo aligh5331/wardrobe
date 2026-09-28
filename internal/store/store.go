@@ -2,13 +2,16 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 )
 
@@ -34,6 +37,23 @@ type Item struct {
 	AddedDate       time.Time `gorm:"not null"`
 	Notes           string
 }
+
+// WeatherLocation is the single-row weather location setting
+// (04-data-schema.md "Settings — weather location (Phase 2)"). ID is always 1.
+type WeatherLocation struct {
+	ID        uint `gorm:"primaryKey"`
+	Name      string
+	Country   string
+	Latitude  float64
+	Longitude float64
+}
+
+// DefaultWeatherLocation is used while no location row exists (06-decisions.md).
+var DefaultWeatherLocation = WeatherLocation{ID: 1, Name: "Tehran", Country: "Iran", Latitude: 35.69439, Longitude: 51.42151}
+
+// ErrInvalidLocation wraps every SaveWeatherLocation validation error; the
+// message names the offending field (name, latitude, or longitude).
+var ErrInvalidLocation = errors.New("invalid weather location")
 
 // Store wraps the GORM database connection.
 type Store struct {
@@ -64,7 +84,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 
-	if err := db.AutoMigrate(&Item{}); err != nil {
+	if err := db.AutoMigrate(&Item{}, &WeatherLocation{}); err != nil {
 		return nil, err
 	}
 
@@ -115,6 +135,41 @@ func (s *Store) List() ([]Item, error) {
 	var items []Item
 	err := s.db.Find(&items).Error
 	return items, err
+}
+
+// WeatherLocation returns the saved location, or DefaultWeatherLocation if
+// none is saved. It never writes.
+func (s *Store) WeatherLocation() (WeatherLocation, error) {
+	var loc WeatherLocation
+	// Find, not First: a missing row is the normal default case, not an error
+	// for GORM to log on every weather request.
+	res := s.db.Limit(1).Find(&loc, 1)
+	if res.Error != nil {
+		return WeatherLocation{}, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return DefaultWeatherLocation, nil
+	}
+	return loc, nil
+}
+
+// SaveWeatherLocation trims name/country, validates loc, and replaces the
+// single location row. Presence of latitude/longitude (absent vs 0) is the
+// caller's check; here 0 is a valid value. On a validation error nothing is
+// written.
+func (s *Store) SaveWeatherLocation(loc WeatherLocation) error {
+	loc.Name = strings.TrimSpace(loc.Name)
+	loc.Country = strings.TrimSpace(loc.Country)
+	switch {
+	case loc.Name == "":
+		return fmt.Errorf("%w: name is required", ErrInvalidLocation)
+	case !(loc.Latitude >= -90 && loc.Latitude <= 90): // negated form also rejects NaN
+		return fmt.Errorf("%w: latitude must be between -90 and 90", ErrInvalidLocation)
+	case !(loc.Longitude >= -180 && loc.Longitude <= 180):
+		return fmt.Errorf("%w: longitude must be between -180 and 180", ErrInvalidLocation)
+	}
+	loc.ID = 1
+	return s.db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&loc).Error
 }
 
 // Close closes the database connection.

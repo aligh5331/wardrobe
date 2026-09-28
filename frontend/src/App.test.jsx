@@ -178,10 +178,12 @@ describe('App grid page (ING-020 behavior, rendered DOM)', () => {
 
     await screen.findAllByRole('listitem')
 
-    // Exactly one call, with the bare URL only — no RequestInit means no
-    // method/POST/PUT/DELETE/PATCH write request.
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // /api/items and /api/weather (ING-044) each fetch once, bare URL only —
+    // no RequestInit means no method/POST/PUT/DELETE/PATCH write request.
     expect(fetchMock).toHaveBeenCalledWith('/api/items')
+    for (const [, options] of fetchMock.mock.calls) {
+      expect(options).toBeUndefined()
+    }
     // The edit entry point exists, but no write form is rendered yet.
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
     expect(container.querySelectorAll('form, input, select, textarea')).toHaveLength(0)

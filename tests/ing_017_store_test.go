@@ -173,15 +173,14 @@ func TestING017_AC1_OpenCreatesDataDirAndColumns(t *testing.T) {
 		t.Errorf("db file %q not created by Open: %v", path, err)
 	}
 
+	// ING-042 adds the weather_locations settings table; the item columns
+	// live in the items table.
 	tables := rawSchemaColumns(t, path)
-	if len(tables) != 1 {
-		t.Fatalf("want exactly 1 user table in %s, got %d: %v", path, len(tables), tables)
+	cols, ok := tables["items"]
+	if !ok {
+		t.Fatalf("no items table in %s: %v", path, tables)
 	}
-	var cols []string
-	for name, c := range tables {
-		t.Logf("table %q columns: %v", name, c)
-		cols = c
-	}
+	t.Logf("table \"items\" columns: %v", cols)
 	have := map[string]bool{}
 	for _, c := range cols {
 		have[c] = true

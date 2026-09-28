@@ -13,6 +13,7 @@ import (
 	"wardrobe/internal/config"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
+	"wardrobe/internal/weather"
 
 	_ "github.com/joho/godotenv/autoload" // .env autoload
 )
@@ -36,7 +37,10 @@ func main() {
 	}
 	defer st.Close()
 
-	router := api.New(st, api.DefaultPhotosDir, api.WithTagging(taggingProcessor(cfg), api.DefaultStagingDir))
+	router := api.New(st, api.DefaultPhotosDir,
+		api.WithTagging(taggingProcessor(cfg), api.DefaultStagingDir),
+		// No Open-Meteo call here: the client only dials on a weather request.
+		api.WithWeather(weather.New(weather.DefaultForecastBaseURL, weather.DefaultGeocodingBaseURL, weather.DefaultTimeout)))
 	api.ServeFrontend(router, frontend.Dist)
 
 	log.Printf("listening on %s", *addr)
