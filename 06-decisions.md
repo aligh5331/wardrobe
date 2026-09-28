@@ -51,13 +51,18 @@ Based on `current.apparent_temperature_c` (feels-like):
 
 - If today's `temperature_min_c`..`temperature_max_c` range crosses a
   threshold, the tiers of both bands are allowed (layering for the day).
+  The outerwear rule does not widen: it follows the band of the feels-like
+  value (or its fallback below) only.
 - `precipitation_probability_max >= 50` is passed to the LLM as a hint only,
   never a hard filter.
 - Warmth filtering applies to `top`, `bottom`, `outerwear`, `footwear`.
   `headwear` and `accessory` are not warmth-filtered.
 - If feels-like is `null` (Phase 2 missing data), fall back to the midpoint of
-  today's min/max; if those are also `null`, apply no warmth filter and tell
+  today's min/max (if only one of min/max is present, use it); if both are
+  also `null`, apply no warmth filter, treat outerwear as optional, and tell
   the LLM the temperature is unknown.
+- The formality filter, when a formality is chosen, applies to every
+  category (items must match exactly).
 
 These numbers are deliberately simple defaults, kept as named constants in one
 place. Ali will tune them from real use; changing them is a spec edit to this

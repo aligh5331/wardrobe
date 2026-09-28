@@ -142,7 +142,7 @@ Flow:
 5. Validate (`06-decisions.md` "Recommender output validation"): exactly 3
    outfits; ids from candidates only; one top, one bottom, one footwear;
    outerwear present when required, absent when excluded, else optional;
-   at most one headwear; no duplicate ids in an outfit; the 3 id sets are not
+   at most one outerwear and at most one headwear; no duplicate ids in an outfit; the 3 id sets are not
    all identical; `reason` non-empty. Invalid → retry once → `502`.
 
 Response `200`:
