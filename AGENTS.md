@@ -9,21 +9,21 @@ responsibilities, permissions, inputs/outputs, and definitions of done live in
 
 ## 1. Project context
 
-This project is currently in **Phase 2: the weather signal**.
+This project is currently in **Phase 3: the outfit recommender**.
 
-Phase 1 (the local wardrobe catalog that turns one photo of one garment into
-validated structured data) is done. Phase 2 adds current weather and today's
-forecast from Open-Meteo for one location chosen in the web UI
-(`07-architecture.md` "Weather"). Outfit recommendation is Phase 3 and is not
-current implementation scope.
+Phase 1 (the local wardrobe catalog) and Phase 2 (weather from Open-Meteo for
+one location chosen in the web UI) are done. Phase 3 filters the catalog by
+today's weather and optional formality, then asks the local text LLM
+(`LLM_URL`) to pick three outfits from those candidates
+(`07-architecture.md` "Recommender").
 
 The following constraints are architectural decisions, not suggestions:
 
 - Inference and catalog data remain local. Do not introduce cloud inference,
   hosted model APIs, or cloud training. Open-Meteo, called from the backend
   only, is the single allowed external service (`06-decisions.md`).
-- Do not introduce model fine-tuning. Phase 1 uses the local Qwen3-VL-8B
-  tagging model with constrained prompting.
+- Do not introduce model fine-tuning. Tagging uses the local Qwen3-VL-8B
+  model with constrained prompting; recommendations use a base local text LLM.
 - Input is one garment per photo, as a flat lay or hanger photo. Outfit-photo
   detection is out of scope.
 - Taxonomy values come from `03-taxonomy.md`.
@@ -156,18 +156,30 @@ same approved change, as required by the taxonomy specification.
 
 Agents work on the current ticket, not on the whole product.
 
-For Phase 2:
+For Phase 3:
 
-- Implement the weather signal as specified in `07-architecture.md` "Weather".
-- Keep Phase 1 ingestion behavior intact; change it only via an approved spec.
-- Do not start the outfit recommender.
-- Do not wire the Phase 3 `LLM_URL`/`LLM_API_KEY` into any current behavior.
+- Implement the recommender as specified in `07-architecture.md` "Recommender".
+- Keep Phase 1 ingestion and Phase 2 weather behavior intact; change them only
+  via an approved spec.
+- Do not build the outfit log, ratings, garment embeddings/vector search, or
+  outfit image generation (`later-ideas.md`).
 - Do not introduce multi-tenant/auth architecture.
 - Do not turn parked ideas from `later-ideas.md` into implementation work
   without an approved spec.
 
 If a seemingly useful improvement crosses the current phase or ticket scope,
 flag it instead of silently expanding the work.
+
+Scope discipline also applies to how work is handed to a subagent (Task
+tool). Do not hand a subagent one prompt that bundles reading the spec,
+implementing, validating, and writing handoff notes for a multi-file ticket
+in a single invocation. Each `.opencode/agents/*.md` role has a `steps:` cap
+on how many tool-call rounds one invocation gets; a task sized to need most
+or all of that budget risks hitting the cap mid-task, which can break the
+session outright on thinking-enabled Claude models (`06-decisions.md`
+"Agent step caps raised; tickets should be sized to fit a subagent's step
+budget"). Split a large ticket's work into more than one subagent turn
+instead of relying on a larger step budget to absorb an oversized task.
 
 ## 9. Data and personal information
 

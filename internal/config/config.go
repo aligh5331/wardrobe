@@ -31,10 +31,18 @@ type Config struct {
 	// Defaults to 0.4 when unset.
 	VLMTemperature float64
 
-	// LLMURL and LLMAPIKey are provisioned ahead of Phase 3; no Phase 1
-	// consumer, and neither is validated at startup yet.
+	// LLMURL and LLMAPIKey are provisioned ahead of Phase 3. LLMURL is
+	// required by cmd/server only (see RequireLLMURL); cmd/ingest never
+	// calls the LLM and does not need it validated.
 	LLMURL    string
 	LLMAPIKey string
+	// LLMModel is sent as the request "model" field when set; empty
+	// means the field is omitted. Never validated — any trimmed value
+	// is accepted, since server-specific model names aren't enumerable.
+	LLMModel string
+	// LLMTemperature is the sampling temperature passed to the LLM.
+	// Defaults to 0.4 when unset; same validation as VLMTemperature.
+	LLMTemperature float64
 }
 
 // Load reads the env var contract from the process environment and
@@ -47,6 +55,7 @@ func Load() (*Config, error) {
 		VLMAPIKey: os.Getenv("VLM_API_KEY"),
 		LLMURL:    strings.TrimSpace(os.Getenv("LLM_URL")),
 		LLMAPIKey: os.Getenv("LLM_API_KEY"),
+		LLMModel:  strings.TrimSpace(os.Getenv("LLM_MODEL")),
 	}
 
 	if cfg.VLMURL == "" {
@@ -76,7 +85,23 @@ func Load() (*Config, error) {
 	}
 	cfg.VLMTemperature = temperature
 
+	llmTemperature, err := floatEnv("LLM_TEMPERATURE", 0.4, &minTemp, &maxTemp)
+	if err != nil {
+		return nil, err
+	}
+	cfg.LLMTemperature = llmTemperature
+
 	return cfg, nil
+}
+
+// RequireLLMURL enforces the server-only LLM_URL requirement
+// (06-decisions.md "LLM config"). cmd/ingest never calls this — it never
+// calls the LLM and starts fine with LLM_URL empty.
+func (c *Config) RequireLLMURL() error {
+	if c.LLMURL == "" {
+		return errors.New("missing required environment variable: LLM_URL")
+	}
+	return nil
 }
 
 // Warnings returns startup warnings for valid-but-misconfigured

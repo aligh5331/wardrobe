@@ -2,6 +2,152 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Agent step caps raised; tickets should be sized to fit a subagent's step budget
+
+`.opencode/agents/*.md` (and their tracked source `agents/*.md`) each set a
+`steps:` cap: the number of tool-call rounds a session gets before opencode
+forces a stop. Coder was `30`, tester `25`, planner and reviewer `15` each.
+
+Raised to coder `60`, tester `50`, planner `30`, reviewer `30`.
+
+Why: on Claude models with extended thinking (`cc/claude-sonnet-5`,
+`cc/claude-opus-5-5` via 9router), hitting the step cap mid-task made
+opencode inject a forced-stop message with an `assistant` role as the last
+message in the conversation, then immediately resend it. Anthropic rejects
+any request ending in an assistant-role message when thinking is enabled
+("assistant message prefill... conversation must end with a user message"),
+so the resend came back as a hard 400 and killed the whole session, losing
+whatever the subagent had done in the reached steps. This is a known,
+unfixed opencode bug (`anomalyco/opencode#32548`): the injected message has
+the wrong role for thinking-enabled Claude models. It cannot be worked
+around from a plugin — no hook runs late enough to intercept or drop that
+injected message before it is sent.
+
+Since the bug can't be fixed from this repo, the only available mitigation is
+avoiding the step cap in the first place: raise the ceiling, and keep
+individual coder/tester/reviewer/planner invocations small enough that a
+normal ticket finishes well under it. A single subagent call that tries to
+read the spec, implement, validate, and write notes for a multi-file ticket
+in one shot is exactly the shape that runs long enough to hit this. Prefer
+splitting a large ticket's work across more than one subagent turn (e.g. read
+and confirm scope first, then implement) over relying on a larger step
+budget alone — a bigger cap buys headroom, it does not make it safe to hand a
+subagent an unbounded task.
+
+Rejected: leaving the caps as-is (too easy to trip on a normal-sized ticket)
+and disabling extended thinking to route around the prefill restriction
+(thinking is a model quality trade-off unrelated to this bug and not ours to
+disable per-request from agent config).
+
+See `AGENTS.md` "Read before changing" / "Scope and phase discipline" for the
+related instruction to keep task delegation appropriately scoped.
+
+## Phase 3 scope = outfit recommender; Phase 2 closed
+
+Phase 2 (ING-041..ING-045) is done and in use. Phase 3 builds Layer 3 from
+`00-overview.md`: on a button click, suggest **3 outfits** for today, each with
+a one-line reason. Inputs: today's weather (Phase 2), an optional formality
+(`03-taxonomy.md`), and optional free text from the user.
+
+An outfit is **top + bottom + footwear** (required), plus **outerwear** when
+the weather rule requires it, plus optional headwear/accessories.
+
+Not in scope: outfit log / "I wore this", ratings, garment embeddings / vector
+search, outfit image generation (all stay in `later-ideas.md`), multi-day
+planning, recommending for a date other than today.
+
+## Recommender approach: rule filter retrieves candidates, local LLM picks
+
+Two steps:
+
+1. **Deterministic filter (Go):** today's weather maps to allowed warmth tiers
+   and whether outerwear is required (thresholds below); the catalog is
+   filtered by those tiers and by formality when one is chosen. This is the
+   retrieval step — plain SQL/Go over the catalog, no vectors.
+2. **Local text LLM (`LLM_URL`):** receives only the candidates' ids and tags
+   (no photos, no notes), the weather, formality, and user text, and returns 3
+   outfits as strict JSON. It does the part rules are bad at: color
+   coordination and interpreting the free text.
+
+Why: a pure rule engine cannot read "wedding" or "long walk" and color
+matching by hand-written rules is brittle; sending the whole catalog to the
+LLM invites weather-inappropriate picks and a larger prompt. Filtering first
+keeps the LLM's job small and its hard failures (wrong warmth) impossible.
+
+Rejected for now: embedding-based RAG (FashionCLIP + `sqlite-vec`). A catalog
+of a few hundred items needs no vector search, and the valuable retrieval
+target — highly rated past outfits — needs the outfit log, which is not built.
+Revisit together with the outfit log (`later-ideas.md`).
+
+## Weather → warmth thresholds: starting values, to be tuned from real use
+
+Based on `current.apparent_temperature_c` (feels-like):
+
+| Feels-like | Allowed warmth tiers | Outerwear |
+|---|---|---|
+| < 10 °C | `medium`, `heavy` | required |
+| 10–20 °C (inclusive) | `light`, `medium` | optional |
+| > 20 °C | `light` | excluded |
+
+- If today's `temperature_min_c`..`temperature_max_c` range crosses a
+  threshold, the tiers of both bands are allowed (layering for the day).
+  The outerwear rule does not widen: it follows the band of the feels-like
+  value (or its fallback below) only.
+- `precipitation_probability_max >= 50` is passed to the LLM as a hint only,
+  never a hard filter.
+- Warmth filtering applies to `top`, `bottom`, `outerwear`, `footwear`.
+  `headwear` and `accessory` are not warmth-filtered.
+- If feels-like is `null` (Phase 2 missing data), fall back to the midpoint of
+  today's min/max (if only one of min/max is present, use it); if both are
+  also `null`, apply no warmth filter, treat outerwear as optional, and tell
+  the LLM the temperature is unknown.
+- The formality filter, when a formality is chosen, applies to every
+  category (items must match exactly).
+
+These numbers are deliberately simple defaults, kept as named constants in one
+place. Ali will tune them from real use; changing them is a spec edit to this
+entry, not a new env var.
+
+## Recommender output validation: retry once, then 502
+
+The LLM's JSON is untrusted, same as VLM tagging output. Every outfit must:
+use only candidate ids; contain exactly one `top`, one `bottom`, one
+`footwear`; contain one `outerwear` when required and none when excluded; have
+no duplicate ids within the outfit; and the 3 outfits must not be identical
+sets. Invalid or unparseable output is retried **once** (same prompt, nonzero
+temperature, as in the VLM policy); a second failure is `502`. An unreachable
+LLM is `502` immediately with no retry. If the candidates cannot fill a
+required slot, respond `422` naming the slot **without** calling the LLM.
+
+## LLM config: `LLM_URL` required by the server only; optional `LLM_MODEL`; fixed 120 s timeout
+
+- `LLM_URL` becomes a startup error **in `cmd/server` only**. `cmd/ingest`
+  never calls the LLM and keeps starting without it.
+- `LLM_TEMPERATURE` (optional, default `0.4`, `0.0`–`1.0`) mirrors
+  `VLM_TEMPERATURE` validation.
+- `LLM_MODEL` (optional). Empty: no `model` field is sent (llama.cpp ignores
+  it). Set: sent as-is. Needed for servers such as Ollama that require a model
+  name. When `LLM_MODEL` is empty and the LLM server rejects the request (any
+  non-2xx), the `502` message tells the user to set `LLM_MODEL`.
+- LLM requests time out after a fixed **120 s** (`502`). Not configurable;
+  add an env var only if a real model needs longer.
+
+## LLM request always sends `"stream": false` (fixed directly, no ticket)
+
+Found in manual testing against a 9router gateway in front of Claude Sonnet.
+The picker did not send a `stream` field, and 9router streams by default, so
+the reply was `text/event-stream` (`data: {...}`) instead of a chat envelope.
+Both attempts failed with `response is not valid JSON: invalid character 'd'`,
+which became a `502`. llama.cpp defaults to non-streaming, so the local
+setup never showed it.
+
+The request now carries `"stream": false` explicitly. One field in
+`internal/recommend/picker.go` plus one assertion in `TestPickRequestShape`.
+It changes no contract, no config and no behavior for servers that already
+answered in one piece, so it was too small for a ticket and was done as a
+direct fix by Ali's call. SSE parsing is not supported and not planned.
+Better logging of LLM failures is parked in `later-ideas.md`.
+
 ## Phase 2 scope = weather signal; Phase 1 closed
 
 Phase 1 (ING-001..ING-037) is done and in use. Phase 2 builds Layer 2 from

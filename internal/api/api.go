@@ -19,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"wardrobe/internal/catalog"
+	"wardrobe/internal/recommend"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
 	"wardrobe/internal/weather"
@@ -52,9 +53,10 @@ var acceptedPhotoExts = map[string]bool{
 // route. It is built from Option values so existing read-only callers can
 // keep calling New(st, photosDir) unchanged.
 type config struct {
-	processor  *tagging.Processor
-	stagingDir string
-	weather    *weather.Client
+	processor   *tagging.Processor
+	stagingDir  string
+	weather     *weather.Client
+	recommender *recommend.Picker
 }
 
 // Option customises the engine New builds.
@@ -79,6 +81,14 @@ func WithWeather(w *weather.Client) Option {
 	return func(c *config) { c.weather = w }
 }
 
+// WithRecommender wires the LLM picker used by POST /api/recommendations.
+// cmd/server builds it from LLM_URL, LLM_API_KEY, LLM_MODEL and
+// LLM_TEMPERATURE; tests point one at an httptest server. Without it the
+// route returns 503.
+func WithRecommender(p *recommend.Picker) Option {
+	return func(c *config) { c.recommender = p }
+}
+
 // dateFormat is the added_date rendering the read-only contract fixes:
 // YYYY-MM-DD.
 const dateFormat = "2006-01-02"
@@ -88,6 +98,8 @@ const dateFormat = "2006-01-02"
 // /api/taxonomy), the single-item edit write route (PUT /api/items/:id),
 // and the create routes (POST /api/items/photo and POST /api/items). No
 // delete route exists in Phase 1 (07-architecture.md "Catalog write API").
+// The weather routes and POST /api/recommendations (07-architecture.md
+// "Weather (Phase 2)", "Recommender (Phase 3)") bring the total to 12.
 // photosDir is the directory photo requests are served from and the create
 // route moves approved uploads into; cmd/server passes DefaultPhotosDir,
 // and tests may point it at a temp directory so they never touch the real
@@ -111,6 +123,7 @@ func New(st *store.Store, photosDir string, opts ...Option) *gin.Engine {
 	r.GET("/api/weather/cities", searchCities(cfg.weather))
 	r.GET("/api/weather/location", getLocation(st))
 	r.PUT("/api/weather/location", putLocation(st))
+	r.POST("/api/recommendations", postRecommendations(st, cfg.weather, cfg.recommender))
 	return r
 }
 
@@ -133,25 +146,38 @@ func toLocation(l store.WeatherLocation) locationResponse {
 // Null upstream values stay nil pointers and serialize as JSON null.
 func getWeather(st *store.Store, w *weather.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if w == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "weather is not configured"})
+		wr, status, msg := fetchWeather(c, st, w)
+		if status != http.StatusOK {
+			c.JSON(status, gin.H{"error": msg})
 			return
 		}
-		loc, err := st.WeatherLocation()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load weather location"})
-			return
-		}
-		f, err := w.Forecast(c.Request.Context(), loc.Latitude, loc.Longitude)
-		if err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": "weather service unavailable: " + err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, struct {
-			Location locationResponse `json:"location"`
-			weather.Forecast
-		}{toLocation(loc), f})
+		c.JSON(http.StatusOK, wr)
 	}
+}
+
+// weatherResponse is the {location, current, today} body shared by
+// GET /api/weather and POST /api/recommendations.
+type weatherResponse struct {
+	Location locationResponse `json:"location"`
+	weather.Forecast
+}
+
+// fetchWeather loads the saved location and its forecast. On success the
+// status is 200; otherwise it is the HTTP status and error message to send:
+// 503 when w is nil, 500 for a DB failure, 502 for an upstream failure.
+func fetchWeather(c *gin.Context, st *store.Store, w *weather.Client) (weatherResponse, int, string) {
+	if w == nil {
+		return weatherResponse{}, http.StatusServiceUnavailable, "weather is not configured"
+	}
+	loc, err := st.WeatherLocation()
+	if err != nil {
+		return weatherResponse{}, http.StatusInternalServerError, "failed to load weather location"
+	}
+	f, err := w.Forecast(c.Request.Context(), loc.Latitude, loc.Longitude)
+	if err != nil {
+		return weatherResponse{}, http.StatusBadGateway, "weather service unavailable: " + err.Error()
+	}
+	return weatherResponse{toLocation(loc), f}, http.StatusOK, ""
 }
 
 // searchCities proxies Open-Meteo geocoding. Empty/whitespace q is 400 with

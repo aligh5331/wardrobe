@@ -15,7 +15,7 @@ func setEnv(t *testing.T, env map[string]string) {
 		"VLM_URL", "VLM_API_KEY",
 		"VLM_SERIALIZE_REQUESTS", "VLM_REQUEST_DELAY_MS",
 		"VLM_TEMPERATURE",
-		"LLM_URL", "LLM_API_KEY",
+		"LLM_URL", "LLM_API_KEY", "LLM_MODEL", "LLM_TEMPERATURE",
 	} {
 		t.Setenv(name, env[name])
 	}

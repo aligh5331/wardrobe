@@ -99,6 +99,83 @@ UI: a small weather panel showing location name, current temperature, apparent
 temperature, condition, and today's min/max and precipitation chance, with a
 "change location" city search that saves via `PUT /api/weather/location`.
 
+### Recommender (Phase 3)
+
+Rule filter + local text LLM (`06-decisions.md` "Recommender approach").
+Code lives in `internal/recommend`; the LLM client talks to `LLM_URL`'s
+OpenAI-compatible `/v1/chat/completions`, like the VLM client.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/recommendations` | 3 outfits for today from the catalog |
+
+Request body (both fields optional; empty body `{}` is valid):
+
+```json
+{"formality": "smart-casual", "note": "dinner with friends, walking there"}
+```
+
+- `formality`: one of `03-taxonomy.md` formality values, or absent/empty for
+  any. Anything else is `400` naming `formality`.
+- `note`: free text, trimmed, at most 500 characters (`400` naming `note` if
+  longer). Passed to the LLM as user context only.
+
+Flow:
+
+1. Fetch today's weather exactly as `GET /api/weather` does. Weather failure
+   is `502`; the LLM is not called.
+2. Apply the warmth rules (`06-decisions.md` "Weather → warmth thresholds") and
+   the formality filter to the catalog to get candidates.
+3. If candidates lack any required slot (`top`, `bottom`, `footwear`, and
+   `outerwear` when required): `422` with an error naming the missing slot(s).
+   The LLM is not called.
+4. Prompt the LLM with: weather summary (feels-like, min/max, rain chance,
+   condition code), formality, note, and one line per candidate with `id`,
+   `category`, `subcategory`, `dominant_color`, `secondary_colors`, `pattern`,
+   `warmth_tier`, `formality`. No photos, no `notes` field, no other items.
+   The system prompt states the outfit rules and requires JSON only:
+
+   ```json
+   {"outfits": [{"item_ids": ["<id>", "..."], "reason": "<one sentence>"}]}
+   ```
+
+5. Validate (`06-decisions.md` "Recommender output validation"): exactly 3
+   outfits; ids from candidates only; one top, one bottom, one footwear;
+   outerwear present when required, absent when excluded, else optional;
+   at most one outerwear and at most one headwear; no duplicate ids in an outfit; the 3 id sets are not
+   all identical; `reason` non-empty. Invalid → retry once → `502`.
+
+Response `200`:
+
+```json
+{
+  "weather": { "...": "same shape as GET /api/weather" },
+  "outfits": [
+    {"items": [{"...": "same item shape as GET /api/items"}], "reason": "Navy and tan are calm for a mild day."}
+  ]
+}
+```
+
+Items within an outfit are ordered: outerwear, top, bottom, footwear,
+headwear, accessory.
+
+Errors:
+
+| Case | Status |
+|---|---|
+| bad JSON body, invalid `formality`, `note` > 500 chars | `400` naming the field |
+| candidates cannot fill a required slot | `422` naming the slot(s) |
+| weather fetch fails | `502` |
+| LLM unreachable, timeout (120 s), non-2xx, or invalid output twice | `502` |
+| LLM non-2xx while `LLM_MODEL` is empty | `502`, message says to set `LLM_MODEL` |
+| local DB failure | `500` |
+
+UI: a recommendation panel under the weather panel with a formality select
+(any + the three taxonomy values), a note text box, and a "Suggest outfits"
+button. Results show 3 outfits as rows of garment photos with the reason. The
+LLM is only called on click, never on page load. A failure shows the server's
+error message and leaves the catalog and weather panel unaffected.
+
 ## Frontend
 - **Framework:** React, built with Vite (SPA, not Next.js — no SSR/API
   routes needed for a single-user localhost app)
@@ -146,6 +223,7 @@ wardrobe/
 │   ├── tagging/                 # VLM client, serialization, taxonomy validation
 │   ├── catalog/                 # shared photo+row persistence (CLI + API)
 │   ├── weather/                 # Open-Meteo forecast + geocoding client (Phase 2)
+│   ├── recommend/               # warmth rules, candidate filter, LLM outfit picker (Phase 3)
 │   ├── store/                   # GORM models + sqlite access
 │   └── api/                     # Gin handlers
 │
@@ -190,9 +268,8 @@ different:
 
 ## VLM / LLM connectivity
 
-Two independent model endpoints are configured. Phase 1 ingestion only
-calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
-(outfit recommender) — see `06-decisions.md`.
+Two independent model endpoints are configured. Ingestion calls the VLM; the
+Phase 3 recommender calls the LLM — see `06-decisions.md`.
 
 ### Env var contract
 
@@ -200,8 +277,10 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
 |--------------------------|-----------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `VLM_URL`                | yes             | —       | startup error if empty. No URL-format validation at startup; a malformed value is accepted and surfaces when a request is attempted as a "VLM unreachable" error (ING-002)                                                                              |
 | `VLM_API_KEY`            | no              | —       | opaque string, no client-side format check — empty allowed, no auth header sent; validity is determined by the VLM server's response                                                                                                                    |
-| `LLM_URL`                | yes (once used) | —       | startup error if empty; no consumer in Phase 1                                                                                                                                                                                                          |
+| `LLM_URL`                | server only     | —       | `cmd/server` startup error if empty; `cmd/ingest` does not require it. No URL-format validation; a malformed value surfaces as `502` on first recommendation |
 | `LLM_API_KEY`            | no              | —       | empty allowed, no auth header sent                                                                                                                                                                                                                      |
+| `LLM_MODEL`              | no              | —       | sent as the request `model` when set; omitted when empty. On an LLM non-2xx with this empty, the `502` message says to set `LLM_MODEL` |
+| `LLM_TEMPERATURE`        | no              | `0.4`   | same validation as `VLM_TEMPERATURE` (finite, `0.0`–`1.0`, startup error naming the variable otherwise) |
 | `VLM_SERIALIZE_REQUESTS` | no              | `false` | boolean parsed with `strconv.ParseBool` (`1/t/T/TRUE/true/True`, `0/f/F/FALSE/false/False`); unset or empty is `false`; any other value is a startup error naming the variable. `true` forces a global one-at-a-time queue/mutex around all VLM calls   |
 | `VLM_REQUEST_DELAY_MS`   | no              | `0`     | integer; negative values are clamped to 0 with a startup warning; non-numeric is a startup error naming the variable. If >0, wait this long after each VLM response before sending the next request. Only meaningful when `VLM_SERIALIZE_REQUESTS=true` |
 | `VLM_TEMPERATURE`        | no              | `0.4`   | sampling temperature sent on each VLM tagging request; finite number in `0.0`–`1.0` inclusive. Anything else (non-numeric, NaN/Inf, negative, or >1.0) is a startup error naming the variable. `0.0` is valid for deliberate deterministic runs         |
@@ -222,6 +301,7 @@ calls the VLM; the LLM endpoint is provisioned ahead of use for Phase 3
   warning** and proceeds with no delay applied (not a hard error).
 - **Negative delay:** a negative `VLM_REQUEST_DELAY_MS` is treated as `0`
   and logged as a **startup warning** — not stored as-is, not a hard error.
-## Open / future
-- `LLM_URL`/`LLM_API_KEY` have no consumer until Phase 3 (recommender).
-  Don't wire up calls to it in Phase 1 or Phase 2 tickets.
+### LLM request behavior
+- Concurrent, no serialization option (add one only if a real model needs it).
+- Fixed 120 s request timeout; timeout is `502`.
+- Retry once on invalid output, never on unreachable (`06-decisions.md`).

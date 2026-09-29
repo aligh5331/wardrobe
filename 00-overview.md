@@ -10,7 +10,7 @@ A fully local personal wardrobe system, built in three layers:
 3. **Recommender** — picks weather-appropriate, color-coordinated outfits from the catalog
 
 ## Current phase
-**Phase 2: the weather signal.** Phase 1 (ingestion/cataloging pipeline) is built and done. Phase 2 adds Layer 2: current weather plus today's forecast for one user-chosen location, via Open-Meteo, shown in the UI (`07-architecture.md` "Weather"). Layer 3 (recommender) stays out of scope until Phase 2 is built.
+**Phase 3: the outfit recommender.** Phase 1 (catalog) and Phase 2 (weather signal) are built and done. Phase 3 adds Layer 3: on request, the backend filters the catalog by today's weather and an optional formality, and the local text LLM (`LLM_URL`) picks three color-coordinated outfits from those candidates (`07-architecture.md` "Recommender"). Outfit log, ratings, embeddings, and outfit image generation stay parked in `later-ideas.md`.
 
 ## Roles
 - **Ali (human, orchestrator)** — captures garment photos, makes judgment calls on ambiguous items, reviews all agent output, owns infra/tooling decisions. Not writing implementation code directly.
@@ -19,7 +19,7 @@ A fully local personal wardrobe system, built in three layers:
 
 ## Hard constraints (do not relitigate — see `06-decisions.md` for the full log)
 - Fully local. No cloud services, no hosted inference APIs, nothing trained in the cloud. Single scoped exception: weather data from Open-Meteo (`06-decisions.md`).
-- No model fine-tuning. Use a base local VLM (Qwen3-VL-8B) with constrained prompting against `03-taxonomy.md`.
+- No model fine-tuning. Use a base local VLM (Qwen3-VL-8B) with constrained prompting against `03-taxonomy.md`, and a base local text LLM for recommendations.
 - One photo per garment (flat lay/hanger) — not outfit photos on a person.
 
 ## File map

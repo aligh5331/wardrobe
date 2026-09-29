@@ -3,7 +3,7 @@ description: Implements a single backlog ticket against its acceptance criteria 
 mode: all
 # model: provider/model   # optional — set if you want something other than opencode's default for this agent
 color: primary
-steps: 30
+steps: 60
 temperature: 0.3
 permission:
   "*": deny
