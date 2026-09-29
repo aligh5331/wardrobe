@@ -115,6 +115,9 @@ type chatRequest struct {
 	Messages    []message `json:"messages"`
 	Temperature float64   `json:"temperature"`
 	MaxTokens   int       `json:"max_tokens"`
+	// Stream is always sent as false: some gateways (9router) stream by
+	// default, and a text/event-stream body is not a chat envelope.
+	Stream bool `json:"stream"`
 }
 
 type message struct {

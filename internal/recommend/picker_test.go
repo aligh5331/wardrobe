@@ -220,6 +220,9 @@ func TestPickRequestShape(t *testing.T) {
 		if body["temperature"] != 0.3 {
 			t.Errorf("temperature = %v, want 0.3", body["temperature"])
 		}
+		if s, has := body["stream"]; !has || s != false {
+			t.Errorf("stream = %v (present %v), want explicit false", s, has)
+		}
 		msgs, _ := body["messages"].([]any)
 		if len(msgs) != 2 || msgs[0].(map[string]any)["role"] != "system" || msgs[1].(map[string]any)["role"] != "user" {
 			t.Errorf("messages = %v, want system then user", body["messages"])

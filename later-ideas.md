@@ -8,6 +8,35 @@ via the normal change process. Deliberately **not** numbered into the
 
 
 ---
+## LLM failure logging and observability
+
+### Problem
+
+When the recommender fails, the `502` text does not show what the LLM
+actually sent back. The "not valid JSON" and "no choices" paths in
+`internal/recommend/picker.go` drop the response body, `validate()` errors do
+not include the content, and the retry keeps only the last error. Nothing is
+logged server-side either (`internal/api/recommend.go` has no logging). The
+`stream` bug (`06-decisions.md`) needed a manual curl to diagnose.
+
+### Idea
+
+- Append a short snippet (`snippet()`, 300 bytes) of the body or content to
+  every bad-output error.
+- One log line per LLM attempt: attempt number, HTTP status, elapsed time,
+  body length, failure reason, snippet. Stdlib `log` or `log/slog`.
+- One log line when the handler returns `502`, tying the request to its
+  attempts.
+- Optional `LLM_DEBUG=1` to log full request and response. Only if snippets
+  prove insufficient, since it adds an env var and a `.env.example` change.
+
+### Explicitly out of scope for now
+
+- Metrics, tracing, log files, log rotation. Overkill for a single-user local
+  app.
+- Never log `LLM_API_KEY`.
+
+---
 ## Outfit visualization via local image generation
 
 ### Problem

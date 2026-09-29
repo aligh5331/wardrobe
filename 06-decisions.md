@@ -132,6 +132,22 @@ required slot, respond `422` naming the slot **without** calling the LLM.
 - LLM requests time out after a fixed **120 s** (`502`). Not configurable;
   add an env var only if a real model needs longer.
 
+## LLM request always sends `"stream": false` (fixed directly, no ticket)
+
+Found in manual testing against a 9router gateway in front of Claude Sonnet.
+The picker did not send a `stream` field, and 9router streams by default, so
+the reply was `text/event-stream` (`data: {...}`) instead of a chat envelope.
+Both attempts failed with `response is not valid JSON: invalid character 'd'`,
+which became a `502`. llama.cpp defaults to non-streaming, so the local
+setup never showed it.
+
+The request now carries `"stream": false` explicitly. One field in
+`internal/recommend/picker.go` plus one assertion in `TestPickRequestShape`.
+It changes no contract, no config and no behavior for servers that already
+answered in one piece, so it was too small for a ticket and was done as a
+direct fix by Ali's call. SSE parsing is not supported and not planned.
+Better logging of LLM failures is parked in `later-ideas.md`.
+
 ## Phase 2 scope = weather signal; Phase 1 closed
 
 Phase 1 (ING-001..ING-037) is done and in use. Phase 2 builds Layer 2 from
