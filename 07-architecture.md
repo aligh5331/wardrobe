@@ -344,7 +344,11 @@ logging dependency, keeping the single-embedded-binary runtime model.
   per attempt with attempt number, HTTP status, elapsed time, response body
   length, outcome and a 300-byte body snippet. The full response body is
   logged only at `debug`. Request bodies are never logged; `LLM_API_KEY` is
-  never logged. Error strings returned to the browser are unchanged. The `502`
+  never logged. Open-Meteo exception: a successful forecast body begins with
+  the saved location's coordinates, so weather attempts include the snippet
+  only when the attempt failed (non-2xx or unreachable); `ok` and `bad_body`
+  outcomes log the length only, and request URLs with coordinates appear only
+  at `debug`. Error strings returned to the browser are unchanged. The `502`
   path in `internal/api/recommend.go` logs with the `request_id`.
 - **Failure to open `logs/app.log`:** startup logs a warning and continues
   with stderr only; it is not a hard error.
