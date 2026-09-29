@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import ItemAddForm from './ItemAddForm.jsx'
 import ItemEditForm from './ItemEditForm.jsx'
 import WeatherPanel from './WeatherPanel.jsx'
+import RecommendationPanel from './RecommendationPanel.jsx'
 
 // Grid of one card per cataloged garment, plus the ING-033 edit entry point.
 // Loading the grid itself stays read-only; a write form only exists after the
@@ -214,6 +215,10 @@ export default function App() {
 
       <div className="mb-6">
         <WeatherPanel />
+      </div>
+
+      <div className="mb-6">
+        <RecommendationPanel />
       </div>
 
       {adding && <ItemAddForm onSaved={saveNew} onCancel={() => setAdding(false)} />}
