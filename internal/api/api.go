@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -57,6 +58,7 @@ type config struct {
 	stagingDir  string
 	weather     *weather.Client
 	recommender *recommend.Picker
+	logger      *slog.Logger
 }
 
 // Option customises the engine New builds.
@@ -89,6 +91,13 @@ func WithRecommender(p *recommend.Picker) Option {
 	return func(c *config) { c.recommender = p }
 }
 
+// WithLogger sets the logger the access-log middleware writes to
+// (07-architecture.md "Logging"). Without it the middleware uses
+// slog.Default().
+func WithLogger(l *slog.Logger) Option {
+	return func(c *config) { c.logger = l }
+}
+
 // dateFormat is the added_date rendering the read-only contract fixes:
 // YYYY-MM-DD.
 const dateFormat = "2006-01-02"
@@ -111,7 +120,7 @@ func New(st *store.Store, photosDir string, opts ...Option) *gin.Engine {
 	}
 
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(accessLog(cfg.logger), gin.Recovery())
 	r.GET("/api/items", listItems(st))
 	r.GET("/api/items/:id", getItem(st))
 	r.PUT("/api/items/:id", updateItem(st))
