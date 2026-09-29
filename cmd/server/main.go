@@ -6,11 +6,13 @@ package main
 
 import (
 	"flag"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"wardrobe/frontend"
 	"wardrobe/internal/api"
 	"wardrobe/internal/config"
+	"wardrobe/internal/logging"
 	"wardrobe/internal/recommend"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
@@ -23,25 +25,39 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	flag.Parse()
 
+	// Config errors go through slog.Default() (text, stderr) because the
+	// configured logger needs a valid config to exist.
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("startup: %v", err)
+		slog.Error("startup: " + err.Error())
+		os.Exit(1)
 	}
 	if err := cfg.RequireLLMURL(); err != nil {
-		log.Fatalf("startup: %v", err)
+		slog.Error("startup: " + err.Error())
+		os.Exit(1)
+	}
+
+	// ponytail: not installed as slog.Default(); the request logger reaches
+	// handlers through api.WithLogger. The file closer is dropped on purpose.
+	logger, _, err := logging.New(cfg.LogLevel, cfg.LogFormat, "logs/app.log", os.Stderr)
+	if err != nil {
+		slog.Error("startup: " + err.Error())
+		os.Exit(1)
 	}
 
 	for _, warning := range cfg.Warnings() {
-		log.Printf("startup warning: %s", warning)
+		logger.Warn("startup warning: " + warning)
 	}
 
 	st, err := store.Open(store.DefaultDBPath)
 	if err != nil {
-		log.Fatalf("startup: open store: %v", err)
+		logger.Error("startup: open store: " + err.Error())
+		os.Exit(1)
 	}
 	defer st.Close()
 
 	router := api.New(st, api.DefaultPhotosDir,
+		api.WithLogger(logger),
 		api.WithTagging(taggingProcessor(cfg), api.DefaultStagingDir),
 		// No Open-Meteo call here: the client only dials on a weather request.
 		api.WithWeather(weather.New(weather.DefaultForecastBaseURL, weather.DefaultGeocodingBaseURL, weather.DefaultTimeout)),
@@ -51,8 +67,12 @@ func main() {
 		}))
 	api.ServeFrontend(router, frontend.Dist)
 
-	log.Printf("listening on %s", *addr)
-	log.Fatal(http.ListenAndServe(*addr, router))
+	logger.Info("listening on " + *addr)
+	// No "startup:" here: that prefix marks failures before the listen stage.
+	if err := http.ListenAndServe(*addr, router); err != nil {
+		logger.Error("server stopped: " + err.Error())
+		os.Exit(1)
+	}
 }
 
 // taggingProcessor builds the local VLM tagging pipeline from config exactly
