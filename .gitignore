@@ -11,13 +11,11 @@ temp/
 # --- Go ---
 /wardrobe
 /server
+/ingest
 *.exe
 *.test
 *.out
 vendor/
-
-server
-ingest
 
 # --- Frontend (Vite/React) ---
 frontend/node_modules/
