@@ -138,6 +138,18 @@ func TestING053_LevelPerStatusClass(t *testing.T) {
 	}
 }
 
+// Tester addition: the level cases above have no 3xx, so "2xx or 3xx is info"
+// was only asserted for 2xx.
+func TestING053_RedirectIsInfo(t *testing.T) {
+	e, buf := ing053Engine(t, false)
+	e.GET("/test/redirect", func(c *gin.Context) { c.Redirect(http.StatusFound, "/api/taxonomy") })
+	rr := ing053Do(e, http.MethodGet, "/test/redirect", "", nil)
+	rec := ing053One(t, buf)
+	if rr.Code != 302 || rec["status"] != float64(302) || rec["level"] != "INFO" {
+		t.Errorf("response %d, record status %v level %v, want 302 INFO", rr.Code, rec["status"], rec["level"])
+	}
+}
+
 func TestING053_RequestIDRoundTrip(t *testing.T) {
 	e, buf := ing053Engine(t, false)
 
