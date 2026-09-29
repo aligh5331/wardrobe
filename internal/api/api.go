@@ -490,6 +490,7 @@ func createItem(st *store.Store, photosDir, stagingDir string) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid item_id"})
 			return
 		}
+		c.Set("item_id", body.ItemID)
 		stagedPath, err := stagedPhotoPath(stagingDir, body.ItemID, body.PhotoRef)
 		switch {
 		case errors.Is(err, errInvalidPhotoRef):
@@ -624,6 +625,7 @@ func uploadPhoto(p *tagging.Processor, stagingDir string) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate item id"})
 			return
 		}
+		c.Set("item_id", itemID)
 		if err := os.MkdirAll(stagingDir, 0o755); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare staging directory"})
 			return
