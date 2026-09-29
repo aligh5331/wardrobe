@@ -2,6 +2,7 @@
 data/
 logs/
 temp/
+.scratch/
 
 # --- Secrets / local config ---
 .env
