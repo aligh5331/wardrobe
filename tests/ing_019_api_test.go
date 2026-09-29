@@ -318,13 +318,14 @@ func TestING019_AC6_RejectsTraversalFilenames(t *testing.T) {
 // extra or missing route fails here. (Assertion converted from the read-only
 // set by ING-030's test note; write-route tickets extend the set only when
 // their route is approved. ING-031 added POST /api/items/photo; ING-032
-// added POST /api/items. ING-043 added the four Phase 2 weather routes.)
+// added POST /api/items. ING-043 added the four Phase 2 weather routes.
+// ING-049 added POST /api/recommendations.)
 func TestING019_AC7_OnlyReadOnlyRoutes(t *testing.T) {
 	engine, _, _ := newING019API(t)
 
 	routes := engine.Routes()
-	if len(routes) != 11 {
-		t.Fatalf("registered routes = %d, want exactly 11: %v", len(routes), ing019RouteNames(routes))
+	if len(routes) != 12 {
+		t.Fatalf("registered routes = %d, want exactly 12: %v", len(routes), ing019RouteNames(routes))
 	}
 	want := map[string]bool{
 		"GET /api/items":            false,
@@ -338,6 +339,7 @@ func TestING019_AC7_OnlyReadOnlyRoutes(t *testing.T) {
 		"GET /api/weather/cities":   false,
 		"GET /api/weather/location": false,
 		"PUT /api/weather/location": false,
+		"POST /api/recommendations": false,
 	}
 	for _, r := range routes {
 		if r.Method == http.MethodDelete || r.Method == http.MethodPatch {

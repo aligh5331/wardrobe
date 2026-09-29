@@ -11,6 +11,7 @@ import (
 	"wardrobe/frontend"
 	"wardrobe/internal/api"
 	"wardrobe/internal/config"
+	"wardrobe/internal/recommend"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
 	"wardrobe/internal/weather"
@@ -43,7 +44,11 @@ func main() {
 	router := api.New(st, api.DefaultPhotosDir,
 		api.WithTagging(taggingProcessor(cfg), api.DefaultStagingDir),
 		// No Open-Meteo call here: the client only dials on a weather request.
-		api.WithWeather(weather.New(weather.DefaultForecastBaseURL, weather.DefaultGeocodingBaseURL, weather.DefaultTimeout)))
+		api.WithWeather(weather.New(weather.DefaultForecastBaseURL, weather.DefaultGeocodingBaseURL, weather.DefaultTimeout)),
+		// No LLM call here: the picker only dials on a recommendation request.
+		api.WithRecommender(&recommend.Picker{
+			URL: cfg.LLMURL, APIKey: cfg.LLMAPIKey, Model: cfg.LLMModel, Temperature: cfg.LLMTemperature,
+		}))
 	api.ServeFrontend(router, frontend.Dist)
 
 	log.Printf("listening on %s", *addr)
