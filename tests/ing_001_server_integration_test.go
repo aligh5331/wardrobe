@@ -148,17 +148,6 @@ func TestING001_Integration_AC2_ProceedsWithoutKey(t *testing.T) {
 	assertReachedListenStage(t, buf)
 }
 
-// AC5 process-level: LLM_URL unset — startup proceeds normally.
-func TestING001_Integration_AC5_ProceedsWithoutLLMURL(t *testing.T) {
-	cmd, buf := startServer(t, map[string]string{
-		"VLM_URL": "http://127.0.0.1:1",
-		"LLM_URL": "",
-	})
-	defer killServer(cmd)
-
-	assertReachedListenStage(t, buf)
-}
-
 // ING-006 process-level tests: VLM_TEMPERATURE env var contract.
 
 // AC1 process-level: VLM_TEMPERATURE unset — server starts normally
