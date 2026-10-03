@@ -143,10 +143,12 @@ func (a attempt) log(ctx context.Context, n int, err error) {
 		slog.Int64("elapsed_ms", a.elapsed.Milliseconds()),
 		slog.Int("body_bytes", len(a.body)),
 		slog.String("outcome", a.outcome),
-		slog.String("snippet", logging.Snippet(a.body)),
 	}
 	if a.outcome != "ok" {
+		// A successful reply names catalog garments, so only failures
+		// carry a snippet (as with the weather client).
 		level = slog.LevelWarn
+		attrs = append(attrs, slog.String("snippet", logging.Snippet(a.body)))
 		if err != nil {
 			attrs = append(attrs, slog.String("error", err.Error()))
 		}

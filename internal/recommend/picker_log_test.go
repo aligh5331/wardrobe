@@ -60,10 +60,13 @@ func TestAttemptLogOK(t *testing.T) {
 		t.Fatalf("got %d attempt records, want 1: %s", len(recs), buf)
 	}
 	wantAttempt(t, recs[0], 1, 200, "ok", "INFO")
-	for _, k := range []string{"elapsed_ms", "body_bytes", "snippet"} {
+	for _, k := range []string{"elapsed_ms", "body_bytes"} {
 		if _, ok := recs[0][k]; !ok {
 			t.Errorf("record lacks %s", k)
 		}
+	}
+	if _, ok := recs[0]["snippet"]; ok {
+		t.Error("ok record carries a snippet")
 	}
 	if recs[0]["body_bytes"].(float64) < 1 {
 		t.Errorf("body_bytes = %v", recs[0]["body_bytes"])
