@@ -45,12 +45,12 @@ Decision:
   its VLM attempt records.
 - **Outbound attempt logging (LLM and Open-Meteo):** one log line per attempt
   with attempt number, HTTP status, elapsed time, response body length,
-  outcome, and a 300-byte snippet of the body. The full response body is
-  logged only at `debug`. Request bodies (which hold wardrobe data) are never
-  logged. **Open-Meteo exception:** a successful forecast body starts with the
-  saved location's coordinates, so weather attempts log the snippet only for
-  failed attempts (non-2xx or unreachable); `ok` and `bad_body` outcomes log
-  the body length only. Request URLs with coordinates are logged only at
+  outcome, and, for failed attempts only, a 300-byte snippet of the body. The
+  full response body is logged only at `debug`. Request bodies (which hold
+  wardrobe data) are never logged. A successful LLM reply names catalog
+  garments and a successful forecast body starts with the saved location's
+  coordinates, so `ok` attempts log the body length only (weather `bad_body`
+  does too). Request URLs with coordinates are logged only at
   `debug`. `LLM_API_KEY` is never logged. Error strings returned to the browser
   are unchanged; snippets go to server logs only.
 - **Robustness:** failing to open `logs/app.log` warns and falls back to
