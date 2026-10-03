@@ -11,13 +11,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"wardrobe/internal/catalog"
 	"wardrobe/internal/config"
+	"wardrobe/internal/logging"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
 
@@ -25,22 +26,33 @@ import (
 )
 
 func main() {
+	// Config errors go through slog.Default() (text, stderr) because the
+	// configured logger needs a valid config to exist. stdout stays reserved
+	// for the one-JSON-object-per-line result stream (ING-012).
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("startup: %v", err)
+		slog.Error("startup: " + err.Error())
+		os.Exit(1)
+	}
+	logger, _, err := logging.New(cfg.LogLevel, cfg.LogFormat, "logs/app.log", os.Stderr)
+	if err != nil {
+		slog.Error("startup: " + err.Error())
+		os.Exit(1)
 	}
 
 	for _, warning := range cfg.Warnings() {
-		log.Printf("startup warning: %s", warning)
+		logger.Warn("startup warning: " + warning)
 	}
 
 	if len(os.Args) < 2 {
-		log.Fatalf("usage: ingest <photo-path> [photo-path...]")
+		logger.Error("usage: ingest <photo-path> [photo-path...]")
+		os.Exit(1)
 	}
 
 	st, err := store.Open(store.DefaultDBPath)
 	if err != nil {
-		log.Fatalf("startup: open store: %v", err)
+		logger.Error("startup: open store: " + err.Error())
+		os.Exit(1)
 	}
 	defer st.Close()
 
@@ -59,7 +71,7 @@ func main() {
 	for _, arg := range os.Args[1:] {
 		paths, err := expandPaths(arg)
 		if err != nil {
-			log.Printf("error expanding %s: %v", arg, err)
+			logger.Error("error expanding path", "path", arg, "error", err.Error())
 			os.Exit(1)
 		}
 
@@ -67,10 +79,10 @@ func main() {
 			outcome, err := processor.Process(ctx, photoPath)
 			if err != nil {
 				if errors.Is(err, tagging.ErrVLMUnreachable) {
-					log.Printf("VLM unreachable for %s: %v", photoPath, err)
+					logger.Error("VLM unreachable", "path", photoPath, "error", err.Error())
 					os.Exit(1)
 				}
-				log.Printf("hard error processing %s: %v", photoPath, err)
+				logger.Error("hard error processing photo", "path", photoPath, "error", err.Error())
 				os.Exit(1)
 			}
 
@@ -89,7 +101,7 @@ func main() {
 
 			jsonBytes, err := json.Marshal(result)
 			if err != nil {
-				log.Printf("encode result for %s: %v", photoPath, err)
+				logger.Error("encode result failed", "path", photoPath, "error", err.Error())
 				os.Exit(1)
 			}
 			fmt.Println(string(jsonBytes))
@@ -100,9 +112,9 @@ func main() {
 
 			// Shared rollback-safe create (ING-028); the ingest path
 			// supplies no notes yet. Failures still surface in the
-			// existing CLI style: log "persist <path>" and exit 1.
+			// existing CLI style: log "persist" with the path and exit 1.
 			if _, err := catalog.Create(st, catalog.PhotosDir, outcome.ItemID, outcome.PhotoPath, outcome.Result, ""); err != nil {
-				log.Printf("persist %s: %v", photoPath, err)
+				logger.Error("persist failed", "path", photoPath, "error", err.Error())
 				os.Exit(1)
 			}
 		}
