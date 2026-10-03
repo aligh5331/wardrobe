@@ -1,4 +1,14 @@
 import { useEffect, useState } from 'react'
+import {
+  Icon,
+  Spinner,
+  buttonGhost,
+  buttonPrimary,
+  buttonSecondary,
+  cardClass,
+  errorClass,
+  inputClass,
+} from './ui.jsx'
 
 // ING-044 — small weather panel: current + today, independent of the items
 // fetch so a weather failure never blocks the catalog grid or add flow
@@ -32,9 +42,88 @@ const WMO_LABELS = {
   80: 'Showers',
   81: 'Showers',
   82: 'Showers',
+  85: 'Snow showers',
+  86: 'Snow showers',
   95: 'Thunderstorm',
   96: 'Thunderstorm',
   99: 'Thunderstorm',
+}
+
+// Condition label → icon, so the icon always agrees with the label above.
+// Anything unmapped (or a null code) gets the plain cloud in a muted color.
+const CLOUD = 'M6.5 18a4.5 4.5 0 0 1-.4-8.98A6 6 0 0 1 17.6 9.5 4.25 4.25 0 0 1 17.5 18z'
+const CLOUD_HIGH = 'M6.5 14a4.5 4.5 0 0 1-.4-8.98A6 6 0 0 1 17.6 5.5 4.25 4.25 0 0 1 17.5 14z'
+const SUN_RAYS =
+  'M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'
+
+const ICON_PARTS = {
+  sun: [
+    ['text-amber-500', <circle key="c" cx="12" cy="12" r="4" />],
+    ['text-amber-500', <path key="r" d={SUN_RAYS} />],
+  ],
+  partly: [
+    ['text-amber-500', <circle key="c" cx="8" cy="8" r="3" />],
+    ['text-amber-500', <path key="r" d="M8 2.5v1M2.5 8h1M4.1 4.1l.7.7M11.9 4.1l-.7.7" />],
+    [
+      'fill-white text-stone-400',
+      <path key="cl" d="M10 20a3.5 3.5 0 0 1-.3-6.98A4.6 4.6 0 0 1 18.6 13a3.5 3.5 0 0 1-.1 7z" />,
+    ],
+  ],
+  cloud: [['text-stone-400', <path key="cl" d={CLOUD} />]],
+  fog: [['text-stone-400', <path key="f" d="M4 8h16M3 12h18M5 16h14M8 20h8" />]],
+  drizzle: [
+    ['text-stone-400', <path key="cl" d={CLOUD_HIGH} />],
+    ['text-sky-500', <path key="d" d="M8 17.5v.5M12 18.5v.5M16 17.5v.5M10 21v.5M14 21v.5" />],
+  ],
+  rain: [
+    ['text-stone-400', <path key="cl" d={CLOUD_HIGH} />],
+    ['text-sky-500', <path key="d" d="M8 17l-1 3M12 17l-1 3M16 17l-1 3" />],
+  ],
+  snow: [
+    ['text-stone-400', <path key="cl" d={CLOUD_HIGH} />],
+    ['text-sky-400', <path key="d" d="M8 18h.01M12 18h.01M16 18h.01M10 21h.01M14 21h.01" />],
+  ],
+  storm: [
+    ['text-stone-400', <path key="cl" d={CLOUD_HIGH} />],
+    ['text-amber-500', <path key="b" d="M12.5 15l-2.5 4h4l-2.5 4" />],
+  ],
+  unknown: [['text-stone-300', <path key="cl" d={CLOUD} />]],
+}
+
+const ICON_FOR_LABEL = {
+  Clear: 'sun',
+  'Mainly clear': 'partly',
+  'Partly cloudy': 'partly',
+  Cloudy: 'cloud',
+  Fog: 'fog',
+  Drizzle: 'drizzle',
+  Rain: 'rain',
+  Showers: 'rain',
+  Snow: 'snow',
+  'Snow showers': 'snow',
+  Thunderstorm: 'storm',
+}
+
+function WeatherIcon({ code, className }) {
+  const parts = ICON_PARTS[ICON_FOR_LABEL[conditionLabel(code)] ?? 'unknown']
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      {parts.map(([color, shape], index) => (
+        <g key={index} className={color}>
+          {shape}
+        </g>
+      ))}
+    </svg>
+  )
 }
 
 const conditionLabel = (code) => {
@@ -93,6 +182,11 @@ export default function WeatherPanel() {
       cancelled = true
     }
   }, [])
+
+  const retry = () => {
+    setStatus('loading')
+    loadWeather().catch(() => setStatus('error'))
+  }
 
   const openChange = () => {
     setChanging(true)
@@ -180,88 +274,168 @@ export default function WeatherPanel() {
   }
 
   if (status === 'loading') {
-    return <p className="text-sm text-gray-500">Loading weather…</p>
+    return (
+      <section aria-label="Weather" aria-busy="true" className={`${cardClass} p-5 sm:p-6`}>
+        <p className="sr-only">Loading weather…</p>
+        <div aria-hidden="true" className="flex items-center gap-4 motion-safe:animate-pulse">
+          <div className="size-14 rounded-full bg-stone-200" />
+          <div className="flex flex-1 flex-col gap-2">
+            <div className="h-7 w-28 rounded bg-stone-200" />
+            <div className="h-4 w-44 rounded bg-stone-100" />
+          </div>
+        </div>
+      </section>
+    )
   }
 
   if (status === 'error') {
-    return <p className="text-sm text-red-600">Could not load the weather.</p>
+    return (
+      <section
+        aria-label="Weather"
+        className={`${cardClass} flex flex-wrap items-center gap-3 p-5 sm:p-6`}
+      >
+        <p className="flex flex-1 items-center gap-2 text-sm text-red-700">
+          <Icon name="alert" className="size-4" />
+          Could not load the weather.
+        </p>
+        <button type="button" onClick={retry} className={buttonSecondary}>
+          <Icon name="refresh" />
+          Try again
+        </button>
+      </section>
+    )
   }
 
   const { location, current, today } = weather
 
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm">
-      <div className="flex flex-wrap items-center gap-4">
-        <span className="font-semibold text-gray-900">{location?.name ?? '-'}</span>
-        <span className="text-gray-800">{withUnit(current?.temperature_c, '°C')}</span>
-        <span className="text-gray-500">Feels like {withUnit(current?.apparent_temperature_c, '°C')}</span>
-        <span className="text-gray-500">{conditionLabel(current?.weather_code)}</span>
-        <span className="text-gray-500">
-          {withUnit(today?.temperature_min_c, '°C')} / {withUnit(today?.temperature_max_c, '°C')}
-        </span>
-        <span className="text-gray-500">{withUnit(today?.precipitation_probability_max, '%')} rain</span>
-        {!changing && (
-          <button
-            type="button"
-            onClick={openChange}
-            className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            Change location
-          </button>
-        )}
+    <section aria-label="Weather" className={`${cardClass} flex flex-col gap-5 p-5 sm:p-6`}>
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+        <div className="flex items-center gap-4">
+          <WeatherIcon code={current?.weather_code} className="size-14 shrink-0" />
+          <div className="flex flex-col">
+            <p className="flex flex-wrap items-baseline gap-x-2">
+              <span className="text-4xl font-semibold tracking-tight text-stone-900 tabular-nums">
+                {withUnit(current?.temperature_c, '°C')}
+              </span>
+              <span className="text-base text-stone-600">
+                {conditionLabel(current?.weather_code)}
+              </span>
+            </p>
+            <p className="text-sm text-stone-500">
+              Feels like {withUnit(current?.apparent_temperature_c, '°C')}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-start gap-1 sm:items-end">
+          <div className="flex items-center gap-1.5 text-stone-900">
+            <Icon name="pin" className="size-4 text-stone-400" />
+            <h2 className="font-semibold">{location?.name ?? '-'}</h2>
+            {location?.country && (
+              <span className="text-sm text-stone-500">{location.country}</span>
+            )}
+          </div>
+          {!changing && (
+            <button type="button" onClick={openChange} className={`${buttonGhost} -mx-2.5`}>
+              Change location
+            </button>
+          )}
+        </div>
       </div>
 
+      <dl className="grid grid-cols-3 divide-x divide-stone-200 rounded-xl bg-stone-50 py-3 text-center">
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-xs text-stone-500">Low</dt>
+          <dd className="font-medium text-stone-900 tabular-nums">
+            {withUnit(today?.temperature_min_c, '°C')}
+          </dd>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-xs text-stone-500">High</dt>
+          <dd className="font-medium text-stone-900 tabular-nums">
+            {withUnit(today?.temperature_max_c, '°C')}
+          </dd>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-xs text-stone-500">Chance of rain</dt>
+          <dd className="font-medium text-stone-900 tabular-nums">
+            {withUnit(today?.precipitation_probability_max, '%')}
+          </dd>
+        </div>
+      </dl>
+
       {changing && (
-        <div className="flex flex-col gap-2 border-t border-gray-200 pt-2">
-          <form onSubmit={submitSearch} aria-label="Change location" className="flex gap-2">
-            <input
-              type="text"
-              aria-label="City"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="rounded border border-gray-300 px-2 py-1 text-sm"
-            />
-            <button
-              type="submit"
-              disabled={searchStatus === 'loading' || saving}
-              className="rounded bg-gray-900 px-3 py-1 text-sm text-white disabled:opacity-50"
-            >
-              {searchStatus === 'loading' ? 'Searching…' : 'Search'}
-            </button>
-            <button
-              type="button"
-              onClick={cancelChange}
-              className="rounded border border-gray-300 px-3 py-1 text-sm"
-            >
-              Cancel
-            </button>
+        <div className="flex flex-col gap-3 border-t border-stone-200 pt-4">
+          <form
+            onSubmit={submitSearch}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') cancelChange()
+            }}
+            aria-label="Change location"
+            className="flex flex-col gap-2 sm:flex-row"
+          >
+            <div className="relative flex-1">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-stone-400">
+                <Icon name="search" />
+              </span>
+              <input
+                type="text"
+                aria-label="City"
+                placeholder="Search for a city"
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className={`${inputClass} pl-9`}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={searchStatus === 'loading' || saving}
+                className={`${buttonPrimary} flex-1 sm:flex-none`}
+              >
+                {searchStatus === 'loading' && <Spinner />}
+                {searchStatus === 'loading' ? 'Searching…' : 'Search'}
+              </button>
+              <button
+                type="button"
+                onClick={cancelChange}
+                className={`${buttonSecondary} flex-1 sm:flex-none`}
+              >
+                Cancel
+              </button>
+            </div>
           </form>
 
           {searchStatus === 'error' && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className={errorClass}>
+              <Icon name="alert" className="mt-0.5 size-4" />
               {searchError}
             </p>
           )}
           {saveError && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className={errorClass}>
+              <Icon name="alert" className="mt-0.5 size-4" />
               {saveError}
             </p>
           )}
 
           {searchStatus === 'done' && results.length === 0 && (
-            <p className="text-sm text-gray-500">No cities found.</p>
+            <p className="text-sm text-stone-500">No cities found.</p>
           )}
 
           {searchStatus === 'done' && results.length > 0 && (
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200">
               {results.map((city, index) => (
                 <li key={`${city.name}-${city.latitude}-${city.longitude}-${index}`}>
                   <button
                     type="button"
                     disabled={saving}
                     onClick={() => pickCity(city)}
-                    className="rounded border border-gray-200 px-2 py-1 text-left text-sm hover:bg-gray-50 disabled:opacity-50"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-stone-800 transition-colors hover:bg-stone-50 focus-visible:bg-stone-100 focus-visible:outline-none disabled:opacity-50"
                   >
+                    <Icon name="pin" className="size-4 text-stone-400" />
                     {[city.name, city.admin1, city.country].filter(Boolean).join(', ')}
                   </button>
                 </li>

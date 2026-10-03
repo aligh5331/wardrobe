@@ -7,6 +7,11 @@
 // The selectable values arrive as `taxonomy`, loaded from GET /api/taxonomy by
 // the caller, never a bundled client-side copy (06-decisions.md "Taxonomy
 // exported to the browser via GET /api/taxonomy, not a bundled copy").
+//
+// The fields render as a flat list so the caller can lay them out in a grid;
+// secondary colors and notes span the full row (sm:col-span-2).
+
+import { Icon, Swatch, inputClass, labelClass } from './ui.jsx'
 
 // Choice lists for the select-backed fields, read from the server taxonomy.
 export function optionsFor(field, taxonomy) {
@@ -26,25 +31,44 @@ export function optionsFor(field, taxonomy) {
   }
 }
 
-export function SelectField({ id, label, value, options, onChange }) {
+export function SelectField({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+  disabled = false,
+  swatch = false,
+}) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="text-sm text-gray-600">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className={labelClass}>
         {label}
       </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="rounded border border-gray-300 px-2 py-1 text-sm"
-      >
-        <option value="">—</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        {swatch && value && (
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+            <Swatch color={value} />
+          </span>
+        )}
+        <select
+          id={id}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          className={`${inputClass} appearance-none pr-9 ${swatch && value ? 'pl-8' : ''}`}
+        >
+          <option value="">—</option>
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-stone-400">
+          <Icon name="chevron" />
+        </span>
+      </div>
     </div>
   )
 }
@@ -89,6 +113,7 @@ export default function TaggingFields({ values, taxonomy, onChange, idPrefix }) 
         label="Subcategory"
         value={values.subcategory}
         options={subcategories}
+        disabled={subcategories.length === 0}
         onChange={(value) => onChange('subcategory', value)}
       />
       <SelectField
@@ -96,6 +121,7 @@ export default function TaggingFields({ values, taxonomy, onChange, idPrefix }) 
         label="Dominant color"
         value={values.dominant_color}
         options={optionsFor('dominant_color', taxonomy)}
+        swatch
         onChange={(value) => onChange('dominant_color', value)}
       />
       <SelectField
@@ -120,31 +146,46 @@ export default function TaggingFields({ values, taxonomy, onChange, idPrefix }) 
         onChange={(value) => onChange('formality', value)}
       />
 
-      <fieldset className="flex flex-col gap-1">
-        <legend className="text-sm text-gray-600">Secondary colors</legend>
-        <div className="flex flex-wrap gap-x-3 gap-y-1">
-          {(taxonomy.colors ?? []).map((color) => (
-            <label key={color} className="flex items-center gap-1 text-sm text-gray-800">
-              <input
-                type="checkbox"
-                checked={values.secondary_colors.includes(color)}
-                onChange={(event) => toggleSecondary(color, event.target.checked)}
-              />
-              {color}
-            </label>
-          ))}
+      <fieldset className="flex flex-col gap-2 sm:col-span-2">
+        <legend className={`${labelClass} mb-1.5`}>Secondary colors</legend>
+        <div className="flex flex-wrap gap-1.5">
+          {(taxonomy.colors ?? []).map((color) => {
+            const checked = values.secondary_colors.includes(color)
+            return (
+              <label
+                key={color}
+                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border py-1 pr-2.5 pl-1.5 text-sm transition-colors select-none has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-stone-900 ${
+                  checked
+                    ? 'border-stone-900 bg-stone-100 font-medium text-stone-900 ring-1 ring-stone-900'
+                    : 'border-stone-300 bg-white text-stone-700 hover:border-stone-400'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) => toggleSecondary(color, event.target.checked)}
+                  className="sr-only"
+                />
+                <Swatch color={color} className="size-4" />
+                {color}
+                {checked && <Icon name="check" className="size-3.5" />}
+              </label>
+            )
+          })}
         </div>
       </fieldset>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor={`${idPrefix}-notes`} className="text-sm text-gray-600">
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <label htmlFor={`${idPrefix}-notes`} className={labelClass}>
           Notes
         </label>
         <textarea
           id={`${idPrefix}-notes`}
           value={values.notes}
+          rows={2}
+          placeholder="Optional — fit, fabric, where it came from…"
           onChange={(event) => onChange('notes', event.target.value)}
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
+          className={`${inputClass} resize-y`}
         />
       </div>
     </>

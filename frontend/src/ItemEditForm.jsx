@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import TaggingFields from './TaggingFields.jsx'
+import { Icon, Spinner, buttonPrimary, buttonSecondary, errorClass } from './ui.jsx'
 
 // ING-033 — edit form for one existing catalog item. It edits exactly the
 // mutable fields of 04-data-schema.md ("Write-path rules (interactive
@@ -47,49 +48,48 @@ export default function ItemEditForm({ item, taxonomy, saving, error, onSubmit, 
     <form
       onSubmit={handleSubmit}
       aria-label="Edit item"
-      className="flex flex-col gap-3"
+      className="grid gap-6 sm:grid-cols-[minmax(0,200px)_1fr]"
     >
-      <div className="flex items-start gap-3 text-sm text-gray-600">
+      <div className="flex items-start gap-4 sm:flex-col sm:gap-3">
         {item.photo_url && (
           <img
             src={item.photo_url}
             alt="Current photo"
-            className="h-16 w-16 rounded object-cover"
+            className="aspect-[4/5] w-24 shrink-0 rounded-xl bg-stone-100 object-cover sm:w-full sm:max-w-60"
           />
         )}
-        <div className="flex flex-col gap-1">
-          <p>
-            ID: <span className="text-gray-900">{item.id}</span>
-          </p>
-          <p>
-            Added: <span className="text-gray-900">{item.added_date}</span>
-          </p>
+        <div className="flex flex-col gap-3">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+            <dt className="text-stone-500">ID</dt>
+            <dd className="font-mono break-all text-stone-700">{item.id}</dd>
+            <dt className="text-stone-500">Added</dt>
+            <dd className="text-stone-700">{item.added_date}</dd>
+          </dl>
+          <p className="text-xs text-stone-400">The photo, ID, and date added can’t be changed.</p>
         </div>
       </div>
 
-      <TaggingFields values={values} taxonomy={taxonomy} onChange={set} idPrefix="edit" />
+      <div className="flex flex-col gap-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TaggingFields values={values} taxonomy={taxonomy} onChange={set} idPrefix="edit" />
+        </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
+        {error && (
+          <p role="alert" className={errorClass}>
+            <Icon name="alert" className="mt-0.5 size-4" />
+            {error}
+          </p>
+        )}
 
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded bg-gray-900 px-3 py-1 text-sm text-white disabled:opacity-50"
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded border border-gray-300 px-3 py-1 text-sm"
-        >
-          Cancel
-        </button>
+        <div className="flex flex-col-reverse gap-2 border-t border-stone-200 pt-4 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onCancel} disabled={saving} className={buttonSecondary}>
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className={buttonPrimary}>
+            {saving && <Spinner />}
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
     </form>
   )
