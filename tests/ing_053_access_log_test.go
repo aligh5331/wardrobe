@@ -74,9 +74,16 @@ func ing053Records(t *testing.T, buf *bytes.Buffer) []map[string]any {
 
 func ing053One(t *testing.T, buf *bytes.Buffer) map[string]any {
 	t.Helper()
-	recs := ing053Records(t, buf)
+	// Outbound attempt records (ING-055/056) may sit beside the access
+	// record; this helper wants exactly one "http request" record.
+	var recs []map[string]any
+	for _, r := range ing053Records(t, buf) {
+		if r["msg"] == "http request" {
+			recs = append(recs, r)
+		}
+	}
 	if len(recs) != 1 {
-		t.Fatalf("got %d log records, want 1: %s", len(recs), buf.String())
+		t.Fatalf("got %d access records, want 1: %s", len(recs), buf.String())
 	}
 	return recs[0]
 }
