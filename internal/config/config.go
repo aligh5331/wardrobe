@@ -43,6 +43,13 @@ type Config struct {
 	// LLMTemperature is the sampling temperature passed to the LLM.
 	// Defaults to 0.4 when unset; same validation as VLMTemperature.
 	LLMTemperature float64
+
+	// LogLevel is one of debug, info, warn, error, stored lower-case.
+	// Defaults to info when unset.
+	LogLevel string
+	// LogFormat is one of text, json, stored lower-case. Defaults to
+	// text when unset.
+	LogFormat string
 }
 
 // Load reads the env var contract from the process environment and
@@ -91,6 +98,18 @@ func Load() (*Config, error) {
 	}
 	cfg.LLMTemperature = llmTemperature
 
+	logLevel, err := enumEnv("LOG_LEVEL", "info", "debug", "info", "warn", "error")
+	if err != nil {
+		return nil, err
+	}
+	cfg.LogLevel = logLevel
+
+	logFormat, err := enumEnv("LOG_FORMAT", "text", "text", "json")
+	if err != nil {
+		return nil, err
+	}
+	cfg.LogFormat = logFormat
+
 	return cfg, nil
 }
 
@@ -130,6 +149,22 @@ func boolEnv(name string, fallback bool) (bool, error) {
 		return false, fmt.Errorf("invalid %s %q: must be true or false", name, raw)
 	}
 	return v, nil
+}
+
+// enumEnv reads an optional case-insensitive enum env var and returns the
+// lower-case value. Surrounding whitespace is trimmed; unset or blank
+// gives the fallback. Any value outside allowed is an error.
+func enumEnv(name, fallback string, allowed ...string) (string, error) {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
+	if raw == "" {
+		return fallback, nil
+	}
+	for _, a := range allowed {
+		if raw == a {
+			return raw, nil
+		}
+	}
+	return "", fmt.Errorf("invalid %s %q: must be one of %s", name, os.Getenv(name), strings.Join(allowed, ", "))
 }
 
 func intEnv(name string, fallback int) (int, error) {

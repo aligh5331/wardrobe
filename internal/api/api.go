@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -57,6 +58,7 @@ type config struct {
 	stagingDir  string
 	weather     *weather.Client
 	recommender *recommend.Picker
+	logger      *slog.Logger
 }
 
 // Option customises the engine New builds.
@@ -89,6 +91,13 @@ func WithRecommender(p *recommend.Picker) Option {
 	return func(c *config) { c.recommender = p }
 }
 
+// WithLogger sets the logger the access-log middleware writes to
+// (07-architecture.md "Logging"). Without it the middleware uses
+// slog.Default().
+func WithLogger(l *slog.Logger) Option {
+	return func(c *config) { c.logger = l }
+}
+
 // dateFormat is the added_date rendering the read-only contract fixes:
 // YYYY-MM-DD.
 const dateFormat = "2006-01-02"
@@ -111,7 +120,7 @@ func New(st *store.Store, photosDir string, opts ...Option) *gin.Engine {
 	}
 
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(accessLog(cfg.logger), gin.Recovery())
 	r.GET("/api/items", listItems(st))
 	r.GET("/api/items/:id", getItem(st))
 	r.PUT("/api/items/:id", updateItem(st))
@@ -481,6 +490,7 @@ func createItem(st *store.Store, photosDir, stagingDir string) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid item_id"})
 			return
 		}
+		c.Set("item_id", body.ItemID)
 		stagedPath, err := stagedPhotoPath(stagingDir, body.ItemID, body.PhotoRef)
 		switch {
 		case errors.Is(err, errInvalidPhotoRef):
@@ -615,6 +625,7 @@ func uploadPhoto(p *tagging.Processor, stagingDir string) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate item id"})
 			return
 		}
+		c.Set("item_id", itemID)
 		if err := os.MkdirAll(stagingDir, 0o755); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to prepare staging directory"})
 			return

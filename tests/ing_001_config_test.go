@@ -22,6 +22,8 @@ var contractVars = []string{
 	"LLM_API_KEY",
 	"LLM_MODEL",
 	"LLM_TEMPERATURE",
+	"LOG_LEVEL",
+	"LOG_FORMAT",
 }
 
 // setContractEnv sets all contract vars (missing map entry => empty) via

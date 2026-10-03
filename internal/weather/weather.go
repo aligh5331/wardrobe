@@ -10,11 +10,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"wardrobe/internal/logging"
 )
 
 // Production defaults (06-decisions.md, 07-architecture.md).
@@ -106,12 +109,15 @@ func (c *Client) Forecast(ctx context.Context, lat, lon float64) (Forecast, erro
 			WeatherCode []*int     `json:"weather_code"`
 		} `json:"daily"`
 	}
-	if err := c.get(ctx, c.forecastBase+"/v1/forecast?"+q.Encode(), &body); err != nil {
-		return Forecast{}, err
+	d := &body.Daily
+	check := func() error {
+		if body.Current == nil || len(d.Min) == 0 || len(d.Max) == 0 || len(d.PrecipProb) == 0 || len(d.WeatherCode) == 0 {
+			return fmt.Errorf("%w: unparseable body: missing current or daily values", ErrUpstream)
+		}
+		return nil
 	}
-	d := body.Daily
-	if body.Current == nil || len(d.Min) == 0 || len(d.Max) == 0 || len(d.PrecipProb) == 0 || len(d.WeatherCode) == 0 {
-		return Forecast{}, fmt.Errorf("%w: unparseable body: missing current or daily values", ErrUpstream)
+	if err := c.get(ctx, "forecast", c.forecastBase+"/v1/forecast?"+q.Encode(), &body, check); err != nil {
+		return Forecast{}, err
 	}
 	cur := body.Current
 	return Forecast{
@@ -127,7 +133,7 @@ func (c *Client) SearchCities(ctx context.Context, text string) ([]City, error) 
 	var body struct {
 		Results []City `json:"results"`
 	}
-	if err := c.get(ctx, c.geocodingBase+"/v1/search?"+q.Encode(), &body); err != nil {
+	if err := c.get(ctx, "geocoding", c.geocodingBase+"/v1/search?"+q.Encode(), &body, nil); err != nil {
 		return nil, err
 	}
 	if len(body.Results) > maxCities {
@@ -139,26 +145,99 @@ func (c *Client) SearchCities(ctx context.Context, text string) ([]City, error) 
 	return body.Results, nil
 }
 
-// get performs one GET and decodes a 2xx JSON body into out.
-func (c *Client) get(ctx context.Context, u string, out any) error {
+// get performs one GET and decodes a 2xx JSON body into out. check, if not
+// nil, validates the decoded body; its error is returned and logged as
+// "bad_body". Exactly one "weather attempt" record is logged per call.
+func (c *Client) get(ctx context.Context, endpoint, u string, out any, check func() error) (err error) {
+	start := time.Now()
+	status, outcome := 0, "unreachable"
+	var body []byte
+	var reqURL *url.URL
+	var elapsed time.Duration
+	defer func() {
+		logAttempt(ctx, endpoint, u, reqURL, status, body, elapsed, outcome, err)
+	}()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return fmt.Errorf("%w: unreachable: %w", ErrUpstream, err)
 	}
+	reqURL = req.URL
 	resp, err := c.http.Do(req)
 	if err != nil {
+		elapsed = time.Since(start)
+		outcome = logging.Outcome(err, outcome)
 		return fmt.Errorf("%w: unreachable or timed out: %w", ErrUpstream, err)
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
+	status, outcome = resp.StatusCode, "read_error"
+	body, err = io.ReadAll(resp.Body)
+	elapsed = time.Since(start)
 	if err != nil {
+		outcome = logging.Outcome(err, outcome)
 		return fmt.Errorf("%w: unreachable or timed out: %w", ErrUpstream, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		outcome = "http_error"
 		return fmt.Errorf("%w: status %s", ErrUpstream, resp.Status)
 	}
-	if err := json.Unmarshal(b, out); err != nil {
+	outcome = "bad_body"
+	if err := json.Unmarshal(body, out); err != nil {
 		return fmt.Errorf("%w: unparseable body: %w", ErrUpstream, err)
 	}
+	if check != nil {
+		if err := check(); err != nil {
+			return err
+		}
+	}
+	outcome = "ok"
 	return nil
+}
+
+// logAttempt writes the one "weather attempt" record to the context's logger
+// (07-architecture.md "Outbound attempt logging"). The request URL carries the
+// saved location's coordinates or the search text, so at info only host and
+// path are logged; the full URL and body appear in a separate debug record.
+// A body snippet is logged only for http_error: a successful forecast body
+// starts with the coordinates.
+func logAttempt(ctx context.Context, endpoint, rawURL string, reqURL *url.URL, status int, body []byte, elapsed time.Duration, outcome string, err error) {
+	l := logging.FromContext(ctx)
+	var host, path string
+	if reqURL != nil {
+		host, path = reqURL.Host, reqURL.Path
+	}
+	if len(body) > 0 && l.Enabled(ctx, slog.LevelDebug) {
+		l.LogAttrs(ctx, slog.LevelDebug, "weather response",
+			slog.String("endpoint", endpoint), slog.String("url", rawURL), slog.String("body", string(body)))
+	}
+	level := slog.LevelInfo
+	attrs := []slog.Attr{
+		slog.String("endpoint", endpoint),
+		slog.Int("attempt", 1),
+		slog.Int("status", status),
+		slog.Int64("elapsed_ms", elapsed.Milliseconds()),
+		slog.Int("body_bytes", len(body)),
+		slog.String("outcome", outcome),
+		slog.String("host", host),
+		slog.String("path", path),
+	}
+	if outcome == "http_error" {
+		attrs = append(attrs, slog.String("snippet", logging.Snippet(body)))
+	}
+	if outcome != "ok" {
+		level = slog.LevelWarn
+		if err != nil {
+			attrs = append(attrs, slog.String("error", stripURL(err)))
+		}
+	}
+	l.LogAttrs(ctx, level, "weather attempt", attrs...)
+}
+
+// stripURL returns err's text without the request URL that *url.Error embeds.
+func stripURL(err error) string {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err.Error()
+	}
+	return err.Error()
 }

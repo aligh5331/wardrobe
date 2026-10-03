@@ -2,6 +2,80 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Structured logging: stdlib `log/slog`, local stderr + file, env-configurable level/format
+
+The backend's logging was ad hoc: stdlib `log.Printf`/`log.Fatalf` in two
+entrypoints, a GORM stderr adapter, and no HTTP request logging at all
+(`gin.New()` + `gin.Recovery()`, no logger middleware). VLM attempts already
+had their own JSONL trail (`logs/vlm-attempts.jsonl`, ING-005). The two
+outbound dependencies added later, the LLM and Open-Meteo, left no trace when
+they failed; the `stream` bug below needed a manual curl to diagnose. The goal
+is that any failure point in the app can be observed from local logs.
+
+Decision:
+
+- **Logger:** Go's standard library `log/slog`. No third-party logging
+  dependency, so the single-embedded-binary runtime model
+  (`07-architecture.md`) is untouched.
+- **Sinks:** process stderr and `logs/app.log` (append), both gitignored,
+  relative to the working directory. `logs/vlm-attempts.jsonl` stays separate
+  and unchanged. LLM and weather attempts go to `app.log` under their own
+  message names; they do not get a separate JSONL file.
+- **Config:** `LOG_LEVEL` (`debug`/`info`/`warn`/`error`, default `info`) and
+  `LOG_FORMAT` (`text`/`json`, default `text`), validated at startup in the
+  same strict style as the other env vars: an unrecognized value is a startup
+  error naming the variable, not a silent fallback. No `LLM_DEBUG` variable;
+  full LLM response bodies are a `debug`-level log instead.
+- **Bootstrap logger:** config loads before the configured logger exists, so
+  config errors (including an invalid `LOG_LEVEL`) are reported through
+  `slog.Default()` on stderr in text format. That is the only case where
+  `LOG_FORMAT=json` is not honored.
+- **Fatal exits:** `slog` has no fatal level. Startup failures log at `error`
+  and then call `os.Exit(1)`.
+- **Access logging:** one Gin middleware logs method, matched route, status,
+  latency, response size, client IP and a generated `request_id`, at a level
+  chosen from the status class. The id is always generated server-side (an
+  incoming `X-Request-ID` is ignored) and returned as `X-Request-ID`. Every
+  request is logged, including static assets and photo requests; filtering is
+  a later change if the noise becomes a problem.
+- **Correlation:** the middleware attaches a request-scoped logger carrying
+  `request_id` to the request context; handlers and the code they call
+  retrieve it, so server-side error logs join to the access log line. Where a
+  tagged item exists the logs also carry `item_id`, joining an API request to
+  its VLM attempt records.
+- **Outbound attempt logging (LLM and Open-Meteo):** one log line per attempt
+  with attempt number, HTTP status, elapsed time, response body length,
+  outcome, and, for failed attempts only, a 300-byte snippet of the body. The
+  full response body is logged only at `debug`. Request bodies (which hold
+  wardrobe data) are never logged. A successful LLM reply names catalog
+  garments and a successful forecast body starts with the saved location's
+  coordinates, so `ok` attempts log the body length only (weather `bad_body`
+  does too). Request URLs with coordinates are logged only at
+  `debug`. `LLM_API_KEY` is never logged. Error strings returned to the browser
+  are unchanged; snippets go to server logs only.
+- **Robustness:** failing to open `logs/app.log` warns and falls back to
+  stderr only; it does not block startup.
+- **Known ceiling:** `logs/app.log` has no rotation or size cap. At
+  single-user volume and default `info` level this is acceptable; `debug`
+  grows faster and includes response bodies, which can contain wardrobe data.
+  Add rotation only if the file becomes a problem.
+
+Rejected:
+
+- **A third-party logger (`zap`/`zerolog`):** performance is irrelevant at
+  single-user localhost scale, and `slog` is stdlib.
+- **`gin.Logger()` as-is:** writes an unstructured line to stdout; the ingest
+  CLI's stdout is a strict one-JSON-object-per-line channel (ING-012), and the
+  format carries none of the correlation fields.
+- **`LLM_DEBUG` env var:** superseded by the `debug` log level.
+- **Prometheus `/metrics`:** a sizeable dependency tree and a new route, and
+  it only pays off once something scrapes it; nothing does locally today.
+- **OpenTelemetry tracing:** one local process and single HTTP hops to the
+  VLM, LLM and weather service; a collector/backend is pure overhead.
+- **Hosted error tracking (Sentry et al.):** violates the fully-local hard
+  constraint (`00-overview.md`) outright. Open-Meteo stays the only external
+  service.
+
 ## Agent step caps raised; tickets should be sized to fit a subagent's step budget
 
 `.opencode/agents/*.md` (and their tracked source `agents/*.md`) each set a
@@ -146,7 +220,8 @@ The request now carries `"stream": false` explicitly. One field in
 It changes no contract, no config and no behavior for servers that already
 answered in one piece, so it was too small for a ticket and was done as a
 direct fix by Ali's call. SSE parsing is not supported and not planned.
-Better logging of LLM failures is parked in `later-ideas.md`.
+Logging of LLM attempts is specified in "Structured logging: stdlib
+`log/slog`" above.
 
 ## Phase 2 scope = weather signal; Phase 1 closed
 

@@ -338,3 +338,21 @@ A good change is:
 
 When in doubt, preserve the existing contract and ask rather than silently
 changing it.
+
+## Agent skills
+
+### Issue tracker
+
+Tickets are local markdown files in `backlog/<TICKET-ID>.md`, with board state
+on the `**Status:**` line. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`), recorded on a `**Triage:**` line, separate from
+`**Status:**`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root, subordinate to
+the protected numbered specs. See `docs/agents/domain.md`.

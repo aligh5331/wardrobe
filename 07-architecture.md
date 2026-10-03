@@ -238,9 +238,9 @@ wardrobe/
 │   ├── photos/                  # never belongs in git history
 │   └── ingest-staging/          # transient UI uploads; removed on save/failure
 │
-├── logs/                        # runtime logs (startup warnings — e.g. the
-│   └── ...                      # VLM_REQUEST_DELAY_MS misconfig warning —
-│                                 # request/error logs). Gitignored.
+├── logs/                        # runtime logs, gitignored:
+│   ├── app.log                  #   slog output (access, startup, LLM/weather attempts)
+│   └── vlm-attempts.jsonl       #   VLM attempt trail (ING-005)
 │
 ├── temp/                        # Coder/Tester scratch space, ask-gated per
 │   └── ...                      # agent permissions (06-decisions.md). Gitignored.
@@ -284,6 +284,8 @@ Phase 3 recommender calls the LLM — see `06-decisions.md`.
 | `VLM_SERIALIZE_REQUESTS` | no              | `false` | boolean parsed with `strconv.ParseBool` (`1/t/T/TRUE/true/True`, `0/f/F/FALSE/false/False`); unset or empty is `false`; any other value is a startup error naming the variable. `true` forces a global one-at-a-time queue/mutex around all VLM calls   |
 | `VLM_REQUEST_DELAY_MS`   | no              | `0`     | integer; negative values are clamped to 0 with a startup warning; non-numeric is a startup error naming the variable. If >0, wait this long after each VLM response before sending the next request. Only meaningful when `VLM_SERIALIZE_REQUESTS=true` |
 | `VLM_TEMPERATURE`        | no              | `0.4`   | sampling temperature sent on each VLM tagging request; finite number in `0.0`–`1.0` inclusive. Anything else (non-numeric, NaN/Inf, negative, or >1.0) is a startup error naming the variable. `0.0` is valid for deliberate deterministic runs         |
+| `LOG_LEVEL`              | no              | `info`  | minimum level emitted; one of `debug`, `info`, `warn`, `error` (case-insensitive). Anything else is a startup error naming the variable                                                                                                                |
+| `LOG_FORMAT`             | no              | `text`  | handler format; one of `text`, `json` (case-insensitive). `text` for interactive local runs, `json` for machine parsing. Anything else is a startup error naming the variable                                                                            |
 
 ### VLM request behavior
 - **Default:** concurrent requests to `VLM_URL`, no artificial
@@ -305,3 +307,51 @@ Phase 3 recommender calls the LLM — see `06-decisions.md`.
 - Concurrent, no serialization option (add one only if a real model needs it).
 - Fixed 120 s request timeout; timeout is `502`.
 - Retry once on invalid output, never on unreachable (`06-decisions.md`).
+- Every attempt is logged (see "Logging").
+
+## Logging
+
+Runtime logging uses the Go standard library `log/slog`, with no third-party
+logging dependency, keeping the single-embedded-binary runtime model.
+
+- **Sinks:** process stderr and `logs/app.log` (append/create, relative to the
+  working directory), both gitignored. `logs/vlm-attempts.jsonl` (ING-005) is
+  a separate, structured attempt trail and is unchanged; the two are not
+  merged.
+- **Level and format:** `LOG_LEVEL` sets the minimum level; `LOG_FORMAT`
+  selects a text handler (interactive local runs) or a JSON handler (machine
+  parsing). Both apply to stderr and `logs/app.log` alike.
+- **Bootstrap logger:** config is loaded before the configured logger exists.
+  Config errors are reported through `slog.Default()` on stderr (text format),
+  then the process exits with status 1. `slog` has no fatal level; startup
+  failures log at `error` and call `os.Exit(1)`.
+- **`cmd/ingest`:** diagnostics go to the logger (stderr). Its stdout stays a
+  strict one-JSON-object-per-line channel (ING-012).
+- **HTTP access log:** every request to the Gin engine logs method, matched
+  route, status, latency, response size, client IP and a generated
+  `request_id`. The id is always generated server-side and returned as an
+  `X-Request-ID` response header; an incoming `X-Request-ID` is ignored.
+  Level follows the status class: 2xx/3xx `info`, 4xx `warn`, 5xx `error`.
+  Every request is logged, including static assets and photos.
+- **Request-scoped logger:** the middleware stores a logger carrying
+  `request_id` in the request context. Handlers and the code they call (the
+  LLM picker, the weather client) retrieve it from the context, falling back
+  to `slog.Default()` when none is present (CLI, tests).
+- **Correlation:** error logs carry `request_id` and, where one exists, the
+  `item_id`, so an API request can be joined to its
+  `logs/vlm-attempts.jsonl` records, which are already keyed by `item_id`.
+- **Outbound attempt logging (LLM recommender and Open-Meteo):** one log line
+  per attempt with attempt number, HTTP status, elapsed time, response body
+  length, outcome and, for failed attempts only, a 300-byte body snippet. The
+  full response body is logged only at `debug`. Request bodies are never
+  logged; `LLM_API_KEY` is never logged. A successful LLM reply names catalog
+  garments, and a successful forecast body begins with the saved location's
+  coordinates, so `ok` attempts log the body length only (weather `bad_body`
+  does too); request URLs with coordinates appear only at `debug`. Error strings returned to the browser are unchanged. The `502`
+  path in `internal/api/recommend.go` logs with the `request_id`.
+- **Failure to open `logs/app.log`:** startup logs a warning and continues
+  with stderr only; it is not a hard error.
+- **No rotation:** `logs/app.log` is not rotated or capped (`06-decisions.md`).
+- **Out of scope:** metrics endpoints, distributed tracing, and any
+  remote/hosted telemetry. The fully-local hard constraint (`00-overview.md`)
+  rules out hosted log/error services outright.

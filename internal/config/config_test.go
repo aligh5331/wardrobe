@@ -16,6 +16,7 @@ func setEnv(t *testing.T, env map[string]string) {
 		"VLM_SERIALIZE_REQUESTS", "VLM_REQUEST_DELAY_MS",
 		"VLM_TEMPERATURE",
 		"LLM_URL", "LLM_API_KEY", "LLM_MODEL", "LLM_TEMPERATURE",
+		"LOG_LEVEL", "LOG_FORMAT",
 	} {
 		t.Setenv(name, env[name])
 	}
@@ -31,6 +32,10 @@ func TestLoad(t *testing.T) {
 		wantDelayMS     int
 		wantTemperature float64
 		wantWarnings    int
+		// wantLogLevel and wantLogFormat default to "info" and "text"
+		// when left empty (the unset defaults).
+		wantLogLevel  string
+		wantLogFormat string
 	}{
 		{
 			name:    "missing VLM_URL errors naming it",
@@ -168,6 +173,97 @@ func TestLoad(t *testing.T) {
 			wantWarnings:    0,
 			wantTemperature: 0.4,
 		},
+		// ING-051: LOG_LEVEL and LOG_FORMAT.
+		{
+			name:            "unset LOG_LEVEL and LOG_FORMAT default to info and text with no warning",
+			env:             map[string]string{"VLM_URL": "http://vlm"},
+			wantTemperature: 0.4,
+			wantLogLevel:    "info",
+			wantLogFormat:   "text",
+		},
+		{
+			name:            "whitespace-only LOG_LEVEL and LOG_FORMAT use the defaults",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": "  ", "LOG_FORMAT": " "},
+			wantTemperature: 0.4,
+			wantLogLevel:    "info",
+			wantLogFormat:   "text",
+		},
+		{
+			name:            "LOG_LEVEL debug",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": "debug"},
+			wantTemperature: 0.4,
+			wantLogLevel:    "debug",
+		},
+		{
+			name:            "LOG_LEVEL info",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": "info"},
+			wantTemperature: 0.4,
+			wantLogLevel:    "info",
+		},
+		{
+			name:            "LOG_LEVEL warn",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": "warn"},
+			wantTemperature: 0.4,
+			wantLogLevel:    "warn",
+		},
+		{
+			name:            "LOG_LEVEL error",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": "error"},
+			wantTemperature: 0.4,
+			wantLogLevel:    "error",
+		},
+		{
+			name:            "LOG_LEVEL WARN is lower-cased",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": "WARN"},
+			wantTemperature: 0.4,
+			wantLogLevel:    "warn",
+		},
+		{
+			name:            "LOG_LEVEL Debug is lower-cased",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": "Debug"},
+			wantTemperature: 0.4,
+			wantLogLevel:    "debug",
+		},
+		{
+			name:            "LOG_LEVEL surrounding whitespace is trimmed",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": " warn "},
+			wantTemperature: 0.4,
+			wantLogLevel:    "warn",
+		},
+		{
+			name:            "LOG_FORMAT text",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_FORMAT": "text"},
+			wantTemperature: 0.4,
+			wantLogFormat:   "text",
+		},
+		{
+			name:            "LOG_FORMAT json",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_FORMAT": "json"},
+			wantTemperature: 0.4,
+			wantLogFormat:   "json",
+		},
+		{
+			name:            "LOG_FORMAT JSON is lower-cased",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_FORMAT": "JSON"},
+			wantTemperature: 0.4,
+			wantLogFormat:   "json",
+		},
+		{
+			name:            "LOG_FORMAT surrounding whitespace is trimmed",
+			env:             map[string]string{"VLM_URL": "http://vlm", "LOG_FORMAT": " Json "},
+			wantTemperature: 0.4,
+			wantLogFormat:   "json",
+		},
+		{
+			name:    "unknown LOG_LEVEL errors naming it",
+			env:     map[string]string{"VLM_URL": "http://vlm", "LOG_LEVEL": "verbose"},
+			wantErr: "LOG_LEVEL",
+		},
+		{
+			name:    "unknown LOG_FORMAT errors naming it",
+			env:     map[string]string{"VLM_URL": "http://vlm", "LOG_FORMAT": "yaml"},
+			wantErr: "LOG_FORMAT",
+		},
 	}
 
 	for _, tt := range tests {
@@ -198,6 +294,19 @@ func TestLoad(t *testing.T) {
 			}
 			if cfg.VLMTemperature != tt.wantTemperature {
 				t.Errorf("VLMTemperature = %v, want %v", cfg.VLMTemperature, tt.wantTemperature)
+			}
+			wantLevel, wantFormat := tt.wantLogLevel, tt.wantLogFormat
+			if wantLevel == "" {
+				wantLevel = "info"
+			}
+			if wantFormat == "" {
+				wantFormat = "text"
+			}
+			if cfg.LogLevel != wantLevel {
+				t.Errorf("LogLevel = %q, want %q", cfg.LogLevel, wantLevel)
+			}
+			if cfg.LogFormat != wantFormat {
+				t.Errorf("LogFormat = %q, want %q", cfg.LogFormat, wantFormat)
 			}
 			if got := len(cfg.Warnings()); got != tt.wantWarnings {
 				t.Errorf("len(Warnings()) = %d, want %d", got, tt.wantWarnings)

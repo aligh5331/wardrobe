@@ -94,7 +94,7 @@ func ing019FreePort(t *testing.T) int {
 // :8080.
 func TestING019_Integration_AC1_DefaultAddr8080(t *testing.T) {
 	h := newING019Harness(t)
-	cmd, buf := h.start(t, map[string]string{"VLM_URL": "http://127.0.0.1:1"})
+	cmd, buf := h.start(t, map[string]string{"VLM_URL": "http://127.0.0.1:1", "LLM_URL": "http://127.0.0.1:1"})
 	defer killServer(cmd)
 
 	if !waitForOutput(buf, "listening on :8080", 30*time.Second) {
@@ -128,7 +128,7 @@ func TestING019_Integration_AC2_AddrOverride(t *testing.T) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 
 	h := newING019Harness(t)
-	cmd, buf := h.start(t, map[string]string{"VLM_URL": "http://127.0.0.1:1"}, "-addr", addr)
+	cmd, buf := h.start(t, map[string]string{"VLM_URL": "http://127.0.0.1:1", "LLM_URL": "http://127.0.0.1:1"}, "-addr", addr)
 	defer killServer(cmd)
 
 	if !waitForOutput(buf, "listening on "+addr, 30*time.Second) {

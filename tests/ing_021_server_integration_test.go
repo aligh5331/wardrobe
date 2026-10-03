@@ -25,7 +25,7 @@ func TestING021_Integration_ServesEmbeddedSPAAndAPI(t *testing.T) {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 
 	h := newING019Harness(t)
-	cmd, buf := h.start(t, map[string]string{"VLM_URL": "http://127.0.0.1:1"}, "-addr", addr)
+	cmd, buf := h.start(t, map[string]string{"VLM_URL": "http://127.0.0.1:1", "LLM_URL": "http://127.0.0.1:1"}, "-addr", addr)
 	defer killServer(cmd)
 
 	if !waitForOutput(buf, "listening on "+addr, 30*time.Second) {
