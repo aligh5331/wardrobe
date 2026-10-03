@@ -179,3 +179,22 @@ func TestAttemptLogNoLoggerInContext(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAttemptLogCanceled(t *testing.T) {
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(slow.Close)
+	ctx, buf := logCtx(slog.LevelDebug)
+	ctx, cancel := context.WithCancel(ctx)
+	time.AfterFunc(30*time.Millisecond, cancel)
+	if _, err := New(slow.URL, "", 5*time.Second).Forecast(ctx, 1, 2); err == nil {
+		t.Fatal("no error")
+	}
+	if rec := one(t, buf); rec["outcome"] != "canceled" {
+		t.Errorf("record = %v", rec)
+	}
+	if n := len(records(t, buf, "weather response")); n != 0 {
+		t.Errorf("%d debug body records for a call with no response", n)
+	}
+}

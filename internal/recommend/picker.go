@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -144,7 +143,7 @@ func (a attempt) log(ctx context.Context, n int, err error) {
 		slog.Int64("elapsed_ms", a.elapsed.Milliseconds()),
 		slog.Int("body_bytes", len(a.body)),
 		slog.String("outcome", a.outcome),
-		slog.String("snippet", snippet(a.body)),
+		slog.String("snippet", logging.Snippet(a.body)),
 	}
 	if a.outcome != "ok" {
 		level = slog.LevelWarn
@@ -153,11 +152,6 @@ func (a attempt) log(ctx context.Context, n int, err error) {
 		}
 	}
 	l.LogAttrs(ctx, level, "llm attempt", attrs...)
-}
-
-func isTimeout(err error) bool {
-	var ne net.Error
-	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout())
 }
 
 type chatRequest struct {
@@ -188,7 +182,6 @@ type chatResponse struct {
 // ErrLLM. On success att.outcome is empty; Pick sets it after validation.
 func (p *Picker) call(ctx context.Context, client *http.Client, system, user string) (content string, att attempt, err error) {
 	start := time.Now()
-	defer func() { att.elapsed = time.Since(start) }()
 	att.outcome = "unreachable" // any failure before a response arrives
 
 	payload, err := json.Marshal(chatRequest{
@@ -212,9 +205,8 @@ func (p *Picker) call(ctx context.Context, client *http.Client, system, user str
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if isTimeout(err) {
-			att.outcome = "timeout"
-		}
+		att.elapsed = time.Since(start)
+		att.outcome = logging.Outcome(err, att.outcome)
 		return "", att, fmt.Errorf("%w: %w", ErrLLM, err)
 	}
 	defer resp.Body.Close()
@@ -222,16 +214,15 @@ func (p *Picker) call(ctx context.Context, client *http.Client, system, user str
 	att.outcome = "read_error"
 	body, err := io.ReadAll(resp.Body)
 	att.body = body
+	att.elapsed = time.Since(start)
 	if err != nil {
-		if isTimeout(err) {
-			att.outcome = "timeout"
-		}
+		att.outcome = logging.Outcome(err, att.outcome)
 		return "", att, fmt.Errorf("%w: read response: %w", ErrLLM, err)
 	}
 
 	if resp.StatusCode/100 != 2 {
 		att.outcome = "http_error"
-		msg := fmt.Sprintf("llm returned %s: %s", resp.Status, snippet(body))
+		msg := fmt.Sprintf("llm returned %s: %s", resp.Status, logging.Snippet(body))
 		if p.Model == "" {
 			msg += ". Set LLM_MODEL if your LLM server requires a model name"
 		}
@@ -248,18 +239,6 @@ func (p *Picker) call(ctx context.Context, client *http.Client, system, user str
 	}
 	att.outcome = ""
 	return cr.Choices[0].Message.Content, att, nil
-}
-
-// snippet returns a single-line prefix of b, at most 300 bytes.
-func snippet(b []byte) string {
-	s := strings.TrimSpace(string(b))
-	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
-		s = s[:i]
-	}
-	if len(s) > 300 {
-		s = s[:300]
-	}
-	return s
 }
 
 func orUnknown[T any](v *T, format string) string {

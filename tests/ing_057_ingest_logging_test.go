@@ -84,14 +84,14 @@ func TestING057_StartupWarning(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d; stderr:\n%s", code, stderr)
 	}
-	var found bool
+	var lines []string
 	for _, line := range strings.Split(stderr, "\n") {
 		if strings.Contains(line, "startup warning") {
-			found = strings.Contains(line, "will not be applied") && strings.Contains(line, "level=WARN")
+			lines = append(lines, line)
 		}
 	}
-	if !found {
-		t.Errorf("no warn record with the warning text on stderr:\n%s", stderr)
+	if len(lines) != 1 || !strings.Contains(lines[0], "will not be applied") || !strings.Contains(lines[0], "level=WARN") {
+		t.Errorf("want one warn record with the warning text on stderr, got %q in:\n%s", lines, stderr)
 	}
 	if strings.Contains(stdout, "startup warning") {
 		t.Errorf("warning leaked to stdout:\n%s", stdout)

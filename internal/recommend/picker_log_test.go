@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -272,5 +273,20 @@ func TestAttemptLogNoLoggerInContext(t *testing.T) {
 	}
 	if len(attempts(t, &buf)) != 1 {
 		t.Errorf("default logger got: %s", buf.String())
+	}
+}
+
+func TestAttemptLogCanceled(t *testing.T) {
+	srv, _ := serve(t, func(n int, w http.ResponseWriter, r *http.Request) { io.Copy(io.Discard, r.Body); <-r.Context().Done() })
+	ctx, buf := logCtx(slog.LevelInfo)
+	ctx, cancel := context.WithCancel(ctx)
+	time.AfterFunc(30*time.Millisecond, cancel)
+	p := Picker{URL: srv.URL, Timeout: 5 * time.Second}
+	if _, err := p.Pick(ctx, pickIn()); !errors.Is(err, ErrLLM) {
+		t.Fatalf("err = %v", err)
+	}
+	recs := attempts(t, buf)
+	if len(recs) != 1 || recs[0]["outcome"] != "canceled" {
+		t.Errorf("records = %v", recs)
 	}
 }

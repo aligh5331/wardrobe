@@ -5,11 +5,14 @@ package logging
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -77,4 +80,31 @@ func FromContext(ctx context.Context) *slog.Logger {
 		return l
 	}
 	return slog.Default()
+}
+
+// Outcome classifies a failed outbound HTTP call for an attempt record:
+// "canceled" when the caller went away, "timeout" for a deadline or net
+// timeout, otherwise fallback.
+func Outcome(err error, fallback string) string {
+	var ne net.Error
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
+		return "timeout"
+	}
+	return fallback
+}
+
+// Snippet returns a single-line prefix of b, at most 300 bytes, for the
+// body-snippet attribute of an attempt record.
+func Snippet(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 300 {
+		s = s[:300]
+	}
+	return s
 }

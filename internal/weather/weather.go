@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -154,8 +153,9 @@ func (c *Client) get(ctx context.Context, endpoint, u string, out any, check fun
 	status, outcome := 0, "unreachable"
 	var body []byte
 	var reqURL *url.URL
+	var elapsed time.Duration
 	defer func() {
-		logAttempt(ctx, endpoint, u, reqURL, status, body, time.Since(start), outcome, err)
+		logAttempt(ctx, endpoint, u, reqURL, status, body, elapsed, outcome, err)
 	}()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -165,18 +165,16 @@ func (c *Client) get(ctx context.Context, endpoint, u string, out any, check fun
 	reqURL = req.URL
 	resp, err := c.http.Do(req)
 	if err != nil {
-		if isTimeout(err) {
-			outcome = "timeout"
-		}
+		elapsed = time.Since(start)
+		outcome = logging.Outcome(err, outcome)
 		return fmt.Errorf("%w: unreachable or timed out: %w", ErrUpstream, err)
 	}
 	defer resp.Body.Close()
 	status, outcome = resp.StatusCode, "read_error"
 	body, err = io.ReadAll(resp.Body)
+	elapsed = time.Since(start)
 	if err != nil {
-		if isTimeout(err) {
-			outcome = "timeout"
-		}
+		outcome = logging.Outcome(err, outcome)
 		return fmt.Errorf("%w: unreachable or timed out: %w", ErrUpstream, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -208,7 +206,7 @@ func logAttempt(ctx context.Context, endpoint, rawURL string, reqURL *url.URL, s
 	if reqURL != nil {
 		host, path = reqURL.Host, reqURL.Path
 	}
-	if l.Enabled(ctx, slog.LevelDebug) {
+	if len(body) > 0 && l.Enabled(ctx, slog.LevelDebug) {
 		l.LogAttrs(ctx, slog.LevelDebug, "weather response",
 			slog.String("endpoint", endpoint), slog.String("url", rawURL), slog.String("body", string(body)))
 	}
@@ -224,7 +222,7 @@ func logAttempt(ctx context.Context, endpoint, rawURL string, reqURL *url.URL, s
 		slog.String("path", path),
 	}
 	if outcome == "http_error" {
-		attrs = append(attrs, slog.String("snippet", snippet(body)))
+		attrs = append(attrs, slog.String("snippet", logging.Snippet(body)))
 	}
 	if outcome != "ok" {
 		level = slog.LevelWarn
@@ -242,18 +240,4 @@ func stripURL(err error) string {
 		return ue.Err.Error()
 	}
 	return err.Error()
-}
-
-func isTimeout(err error) bool {
-	var ne net.Error
-	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout())
-}
-
-// snippet returns a single-line prefix of b, at most 300 bytes.
-func snippet(b []byte) string {
-	const max = 300
-	if len(b) > max {
-		b = b[:max]
-	}
-	return strings.Join(strings.Fields(string(b)), " ")
 }
