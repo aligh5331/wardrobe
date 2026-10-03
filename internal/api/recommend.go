@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"wardrobe/internal/logging"
 	"wardrobe/internal/recommend"
 	"wardrobe/internal/store"
 	"wardrobe/internal/tagging"
@@ -98,6 +99,7 @@ func postRecommendations(st *store.Store, w *weather.Client, p *recommend.Picker
 			Forecast: wr.Forecast, Rules: rules, Formality: body.Formality, Note: note, Candidates: cands,
 		})
 		if err != nil {
+			logging.FromContext(c.Request.Context()).Error("recommendation failed", "error", err.Error())
 			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 			return
 		}

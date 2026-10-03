@@ -12,11 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 
+	"wardrobe/internal/logging"
 	"wardrobe/internal/store"
 	"wardrobe/internal/weather"
 )
@@ -95,19 +98,66 @@ func (p *Picker) Pick(ctx context.Context, in Input) ([]Outfit, error) {
 	client := &http.Client{Timeout: timeout}
 
 	var last error
-	for range 2 {
-		content, err := p.call(ctx, client, system, user)
+	for n := 1; n <= 2; n++ {
+		content, att, err := p.call(ctx, client, system, user)
 		if err == nil {
 			var outfits []Outfit
 			if outfits, err = validate(content, in); err == nil {
+				att.outcome = "ok"
+				att.log(ctx, n, nil)
 				return outfits, nil
 			}
-		} else if !errors.Is(err, errBadOutput) {
+			att.outcome = "invalid_output"
+		}
+		att.log(ctx, n, err)
+		if att.outcome != "invalid_output" && att.outcome != "bad_envelope" {
 			return nil, err
 		}
 		last = err
 	}
 	return nil, fmt.Errorf("%w: invalid output after retry: %v", ErrLLM, last)
+}
+
+// attempt is what one HTTP attempt to the LLM left behind. call fills it;
+// Pick sets outcome "ok" or "invalid_output" once the content is validated.
+type attempt struct {
+	status  int // 0 when no response was received
+	body    []byte
+	elapsed time.Duration
+	outcome string
+}
+
+// log writes the one "llm attempt" record for this attempt to the context's
+// logger (07-architecture.md "Outbound attempt logging"). It never logs the
+// request payload or the API key. The full response body is a separate record
+// at debug only.
+func (a attempt) log(ctx context.Context, n int, err error) {
+	l := logging.FromContext(ctx)
+	if len(a.body) > 0 && l.Enabled(ctx, slog.LevelDebug) {
+		l.LogAttrs(ctx, slog.LevelDebug, "llm response body",
+			slog.Int("attempt", n), slog.String("body", string(a.body)))
+	}
+	level := slog.LevelInfo
+	attrs := []slog.Attr{
+		slog.Int("attempt", n),
+		slog.Int("status", a.status),
+		slog.Int64("elapsed_ms", a.elapsed.Milliseconds()),
+		slog.Int("body_bytes", len(a.body)),
+		slog.String("outcome", a.outcome),
+		slog.String("snippet", snippet(a.body)),
+	}
+	if a.outcome != "ok" {
+		level = slog.LevelWarn
+		if err != nil {
+			attrs = append(attrs, slog.String("error", err.Error()))
+		}
+	}
+	l.LogAttrs(ctx, level, "llm attempt", attrs...)
+}
+
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout())
 }
 
 type chatRequest struct {
@@ -133,9 +183,14 @@ type chatResponse struct {
 	} `json:"choices"`
 }
 
-// call makes one request and returns the first choice's content. Failures
-// other than errBadOutput already wrap ErrLLM.
-func (p *Picker) call(ctx context.Context, client *http.Client, system, user string) (string, error) {
+// call makes one request and returns the first choice's content plus the
+// attempt facts for logging. Failures other than errBadOutput already wrap
+// ErrLLM. On success att.outcome is empty; Pick sets it after validation.
+func (p *Picker) call(ctx context.Context, client *http.Client, system, user string) (content string, att attempt, err error) {
+	start := time.Now()
+	defer func() { att.elapsed = time.Since(start) }()
+	att.outcome = "unreachable" // any failure before a response arrives
+
 	payload, err := json.Marshal(chatRequest{
 		Model:       p.Model,
 		Messages:    []message{{Role: "system", Content: system}, {Role: "user", Content: user}},
@@ -143,12 +198,12 @@ func (p *Picker) call(ctx context.Context, client *http.Client, system, user str
 		MaxTokens:   maxTokens,
 	})
 	if err != nil {
-		return "", fmt.Errorf("%w: encode request: %v", ErrLLM, err)
+		return "", att, fmt.Errorf("%w: encode request: %v", ErrLLM, err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		strings.TrimRight(p.URL, "/")+"/v1/chat/completions", bytes.NewReader(payload))
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrLLM, err)
+		return "", att, fmt.Errorf("%w: %w", ErrLLM, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if p.APIKey != "" {
@@ -157,30 +212,42 @@ func (p *Picker) call(ctx context.Context, client *http.Client, system, user str
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrLLM, err)
+		if isTimeout(err) {
+			att.outcome = "timeout"
+		}
+		return "", att, fmt.Errorf("%w: %w", ErrLLM, err)
 	}
 	defer resp.Body.Close()
+	att.status = resp.StatusCode
+	att.outcome = "read_error"
 	body, err := io.ReadAll(resp.Body)
+	att.body = body
 	if err != nil {
-		return "", fmt.Errorf("%w: read response: %w", ErrLLM, err)
+		if isTimeout(err) {
+			att.outcome = "timeout"
+		}
+		return "", att, fmt.Errorf("%w: read response: %w", ErrLLM, err)
 	}
 
 	if resp.StatusCode/100 != 2 {
+		att.outcome = "http_error"
 		msg := fmt.Sprintf("llm returned %s: %s", resp.Status, snippet(body))
 		if p.Model == "" {
 			msg += ". Set LLM_MODEL if your LLM server requires a model name"
 		}
-		return "", fmt.Errorf("%w: %s", ErrLLM, msg)
+		return "", att, fmt.Errorf("%w: %s", ErrLLM, msg)
 	}
 
+	att.outcome = "bad_envelope"
 	var cr chatResponse
 	if err := json.Unmarshal(body, &cr); err != nil {
-		return "", fmt.Errorf("%w: response is not valid JSON: %v", errBadOutput, err)
+		return "", att, fmt.Errorf("%w: response is not valid JSON: %v", errBadOutput, err)
 	}
 	if len(cr.Choices) == 0 {
-		return "", fmt.Errorf("%w: response had no choices", errBadOutput)
+		return "", att, fmt.Errorf("%w: response had no choices", errBadOutput)
 	}
-	return cr.Choices[0].Message.Content, nil
+	att.outcome = ""
+	return cr.Choices[0].Message.Content, att, nil
 }
 
 // snippet returns a single-line prefix of b, at most 300 bytes.
