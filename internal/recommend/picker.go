@@ -30,7 +30,10 @@ var ErrLLM = errors.New("llm failure")
 const (
 	// llmTimeout is the fixed request timeout (06-decisions.md "LLM config").
 	llmTimeout = 120 * time.Second
-	maxTokens  = 1024
+	// maxTokens leaves room for reasoning models, whose hidden reasoning
+	// counts against it before any answer is written. 1024 was used up by
+	// reasoning alone on deepseek-flash.
+	maxTokens = 8192
 )
 
 // errBadOutput marks a 200 response whose body is unusable. Unlike transport
@@ -106,6 +109,9 @@ func (p *Picker) Pick(ctx context.Context, in Input) ([]Outfit, error) {
 				att.log(ctx, n, nil)
 				return outfits, nil
 			}
+			if att.truncated {
+				err = fmt.Errorf("output cut off at max_tokens=%d before the answer was complete: %w", maxTokens, err)
+			}
 			att.outcome = "invalid_output"
 		}
 		att.log(ctx, n, err)
@@ -124,6 +130,8 @@ type attempt struct {
 	body    []byte
 	elapsed time.Duration
 	outcome string
+	// truncated: the choice's finish_reason was "length".
+	truncated bool
 }
 
 // log writes the one "llm attempt" record for this attempt to the context's
@@ -176,6 +184,7 @@ type chatResponse struct {
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 }
 
@@ -240,6 +249,7 @@ func (p *Picker) call(ctx context.Context, client *http.Client, system, user str
 		return "", att, fmt.Errorf("%w: response had no choices", errBadOutput)
 	}
 	att.outcome = ""
+	att.truncated = cr.Choices[0].FinishReason == "length"
 	return cr.Choices[0].Message.Content, att, nil
 }
 
