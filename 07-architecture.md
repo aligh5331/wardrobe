@@ -74,8 +74,10 @@ Open-Meteo (`06-decisions.md`). No API key, no new env var.
 
 - Fields map 1:1 to Open-Meteo `current=temperature_2m,apparent_temperature,weather_code,precipitation`
   and `daily=temperature_2m_min,temperature_2m_max,precipitation_probability_max,weather_code`
-  with `timezone=auto`, `forecast_days=1`. `weather_code` is the raw WMO code;
-  mapping it to a label/icon is a frontend concern.
+  with `timezone=auto`, `forecast_days=1`. `weather_code` is the raw WMO code
+  in the API; mapping it to a label/icon for display is a frontend concern.
+  The recommender prompt (below) also labels it in words, from its own copy
+  of the same table.
 - A `null` or absent value for any requested variable is **missing data, not
   an error**: Open-Meteo returns `null` when the model has no value for that
   variable/location. The field is `null` in the `/api/weather` response (never
@@ -139,11 +141,17 @@ Flow:
    tiers, feels-like and min–max, and suggests ignoring weather. The LLM is
    not called.
 4. Prompt the LLM with: weather summary (feels-like, min/max, rain chance,
-   condition code), formality, note, whether the weather rules are off, and
+   whether rain is likely per the ≥ 50 % hint, condition code with its label
+   in words), formality, note, whether the weather rules are off, and
    one line per candidate with `id`, `category`, `subcategory`,
    `dominant_color`, `secondary_colors`, `pattern`, `warmth_tier`,
    `formality`. No photos, no `notes` field, no other items.
-   The system prompt states the outfit rules and requires JSON only:
+   The system prompt states the outfit rules, carries the advisor guidance
+   (soft styling rules for color, pattern, layering, formality, accessories
+   and headwear, weather and variety, kept in the embedded
+   `internal/recommend/advisor_prompt.md`; never validated), and requires
+   JSON only. The `reason` names the color or pattern logic and how the
+   outfit fits the weather or the note:
 
    ```json
    {"outfits": [{"item_ids": ["<id>", "..."], "reason": "<one sentence>"}]}
