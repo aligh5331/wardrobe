@@ -20,6 +20,16 @@ The recommender sees tags only, never photos or `notes`.
 the chosen formality (`06-decisions.md` "Recommender approach"). Only
 candidates reach the LLM.
 
+**Weather rules**: the warmth filter (allowed warmth tiers for top, bottom,
+outerwear, footwear) plus the outerwear rule, both derived from today's
+forecast. **Ignoring weather** switches both off for one request: no warmth
+filter, outerwear optional.
+_Avoid_: "weather filter" for just one of the two; "rules" alone.
+
+**Missing slot**: a required slot with no candidate. Each one is explained by
+its cause: none owned, excluded by warmth, excluded by formality. An item
+failing both filters counts under both.
+
 **Slot**: the role an item's category plays in an outfit. `top`, `bottom`,
 `footwear` are required; `outerwear` follows the outerwear rule; `headwear`
 (at most one) and `accessory` are optional.

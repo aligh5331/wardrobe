@@ -132,6 +132,29 @@ describe('ING-050 - recommendation panel', () => {
     expect(posts(fetchMock)[1][1].body).toBe('{"formality":"formal","note":"wedding"}')
   })
 
+  it('ING-061: "Ignore weather" starts unchecked and sends ignore_weather only when checked', async () => {
+    const fetchMock = stubRoutes({
+      'GET /api/taxonomy': jsonResponse(taxonomy),
+      'POST /api/recommendations': jsonResponse({ outfits: [] }),
+    })
+
+    render(<RecommendationPanel />)
+    const box = screen.getByLabelText('Ignore weather')
+    expect(box).toHaveAttribute('type', 'checkbox')
+    expect(box).not.toBeChecked()
+
+    fireEvent.click(box)
+    fireEvent.click(suggestButton())
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1))
+    expect(JSON.parse(posts(fetchMock)[0][1].body)).toEqual({ ignore_weather: true })
+    await waitFor(() => expect(suggestButton()).toBeEnabled())
+
+    fireEvent.click(box)
+    fireEvent.click(suggestButton())
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(2))
+    expect(JSON.parse(posts(fetchMock)[1][1].body)).toEqual({})
+  })
+
   it('AC3: disables the button and shows a loading message while the request is in flight', async () => {
     let resolve
     const pending = new Promise((r) => {

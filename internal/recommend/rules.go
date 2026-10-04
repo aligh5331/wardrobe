@@ -32,12 +32,22 @@ const (
 // Rules is the outcome of the weather rules for one forecast.
 //
 // Tiers is the set of allowed warmth tiers. It is nil exactly when
-// TempUnknown is true, and then Filter applies no warmth filter.
+// TempUnknown or WeatherIgnored is true, and then Filter applies no warmth
+// filter.
 type Rules struct {
 	Tiers       map[string]bool
 	Outerwear   Outerwear
 	TempUnknown bool
 	RainHint    bool
+	// WeatherIgnored: the request turned the weather rules off
+	// (06-decisions.md "Ignoring weather").
+	WeatherIgnored bool
+}
+
+// WithoutWeather returns r with the weather rules off: no warmth filter and
+// outerwear optional. The rain hint is kept; it is guidance, not a rule.
+func (r Rules) WithoutWeather() Rules {
+	return Rules{RainHint: r.RainHint, WeatherIgnored: true}
 }
 
 const (
@@ -117,6 +127,11 @@ func RulesFor(f weather.Forecast) Rules {
 // accessory are exempt.
 var warmthFiltered = map[string]bool{"top": true, "bottom": true, "outerwear": true, "footwear": true}
 
+// warmthExcludes reports whether the warmth filter drops it.
+func warmthExcludes(r Rules, it store.Item) bool {
+	return r.Tiers != nil && warmthFiltered[it.Category] && !r.Tiers[it.WarmthTier]
+}
+
 // Filter returns the candidates for the rules and formality, in input order.
 // An empty formality means no formality filter (otherwise exact match, every
 // category). Outerwear is dropped when excluded.
@@ -129,7 +144,7 @@ func Filter(items []store.Item, r Rules, formality string) []store.Item {
 		if it.Category == "outerwear" && r.Outerwear == OuterwearExcluded {
 			continue
 		}
-		if !r.TempUnknown && warmthFiltered[it.Category] && !r.Tiers[it.WarmthTier] {
+		if warmthExcludes(r, it) {
 			continue
 		}
 		out = append(out, it)

@@ -268,6 +268,9 @@ func buildPrompt(in Input) (system, user string) {
 		orUnknown(f.Today.TemperatureMinC, "%.1f"), orUnknown(f.Today.TemperatureMaxC, "%.1f"))
 	fmt.Fprintf(&b, "- rain chance: %s%%\n", orUnknown(f.Today.PrecipitationProbabilityMax, "%d"))
 	fmt.Fprintf(&b, "- weather code (WMO): %s\n", orUnknown(f.Today.WeatherCode, "%d"))
+	if in.Rules.WeatherIgnored {
+		b.WriteString("Weather rules are off: candidates were not filtered by warmth, so some may be too warm or too cool. Prefer the best fit for this weather.\n")
+	}
 
 	switch in.Rules.Outerwear {
 	case OuterwearRequired:

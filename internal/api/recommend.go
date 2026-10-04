@@ -33,8 +33,9 @@ var outfitCategoryOrder = map[string]int{
 }
 
 type recommendRequest struct {
-	Formality string `json:"formality"`
-	Note      string `json:"note"`
+	Formality     string `json:"formality"`
+	Note          string `json:"note"`
+	IgnoreWeather bool   `json:"ignore_weather"`
 }
 
 type outfitResponse struct {
@@ -89,11 +90,14 @@ func postRecommendations(st *store.Store, w *weather.Client, p *recommend.Picker
 			return
 		}
 		rules := recommend.RulesFor(wr.Forecast)
-		cands := recommend.Filter(items, rules, body.Formality)
-		if missing := recommend.MissingSlots(cands, rules); len(missing) > 0 {
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "cannot build outfits, missing: " + strings.Join(missing, ", ")})
+		if body.IgnoreWeather {
+			rules = rules.WithoutWeather()
+		}
+		if msg := recommend.MissingMessage(items, rules, body.Formality, wr.Forecast); msg != "" {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": msg})
 			return
 		}
+		cands := recommend.Filter(items, rules, body.Formality)
 
 		outfits, err := p.Pick(c.Request.Context(), recommend.Input{
 			Forecast: wr.Forecast, Rules: rules, Formality: body.Formality, Note: note, Candidates: cands,

@@ -109,30 +109,40 @@ OpenAI-compatible `/v1/chat/completions`, like the VLM client.
 |---|---|---|
 | `POST` | `/api/recommendations` | 3 outfits for today from the catalog |
 
-Request body (both fields optional; empty body `{}` is valid):
+Request body (all fields optional; empty body `{}` is valid):
 
 ```json
-{"formality": "smart-casual", "note": "dinner with friends, walking there"}
+{"formality": "smart-casual", "note": "dinner with friends, walking there", "ignore_weather": false}
 ```
 
 - `formality`: one of `03-taxonomy.md` formality values, or absent/empty for
   any. Anything else is `400` naming `formality`.
 - `note`: free text, trimmed, at most 500 characters (`400` naming `note` if
   longer). Passed to the LLM as user context only.
+- `ignore_weather`: boolean, default `false`. When `true`, the weather rules
+  are off for this request: no warmth filter and outerwear is optional
+  (`06-decisions.md` "Ignoring weather"). Weather is still fetched and still
+  shown to the LLM. A non-boolean is `400` naming `ignore_weather`.
 
 Flow:
 
 1. Fetch today's weather exactly as `GET /api/weather` does. Weather failure
    is `502`; the LLM is not called.
-2. Apply the warmth rules (`06-decisions.md` "Weather → warmth thresholds") and
-   the formality filter to the catalog to get candidates.
+2. Apply the warmth rules (`06-decisions.md` "Weather → warmth thresholds"),
+   unless `ignore_weather` is `true`, and the formality filter to the catalog
+   to get candidates.
 3. If candidates lack any required slot (`top`, `bottom`, `footwear`, and
-   `outerwear` when required): `422` with an error naming the missing slot(s).
-   The LLM is not called.
+   `outerwear` when required): `422` with an error naming each missing slot
+   and why it is empty: none in the catalog, or how many owned items the
+   warmth and formality filters each excluded (an item failing both counts in
+   both). When warmth excluded any, the error also states today's allowed
+   tiers, feels-like and min–max, and suggests ignoring weather. The LLM is
+   not called.
 4. Prompt the LLM with: weather summary (feels-like, min/max, rain chance,
-   condition code), formality, note, and one line per candidate with `id`,
-   `category`, `subcategory`, `dominant_color`, `secondary_colors`, `pattern`,
-   `warmth_tier`, `formality`. No photos, no `notes` field, no other items.
+   condition code), formality, note, whether the weather rules are off, and
+   one line per candidate with `id`, `category`, `subcategory`,
+   `dominant_color`, `secondary_colors`, `pattern`, `warmth_tier`,
+   `formality`. No photos, no `notes` field, no other items.
    The system prompt states the outfit rules and requires JSON only:
 
    ```json
@@ -163,15 +173,16 @@ Errors:
 
 | Case | Status |
 |---|---|
-| bad JSON body, invalid `formality`, `note` > 500 chars | `400` naming the field |
-| candidates cannot fill a required slot | `422` naming the slot(s) |
+| bad JSON body, invalid `formality`, non-boolean `ignore_weather`, `note` > 500 chars | `400` naming the field |
+| candidates cannot fill a required slot | `422` naming the slot(s) and why each is empty |
 | weather fetch fails | `502` |
 | LLM unreachable, timeout (120 s), non-2xx, or invalid output twice | `502` |
 | LLM non-2xx while `LLM_MODEL` is empty | `502`, message says to set `LLM_MODEL` |
 | local DB failure | `500` |
 
 UI: a recommendation panel under the weather panel with a formality select
-(any + the three taxonomy values), a note text box, and a "Suggest outfits"
+(any + the three taxonomy values), an "Ignore weather" checkbox next to it
+(unchecked on load, not saved), a note text box, and a "Suggest outfits"
 button. Results show 3 outfits as rows of garment photos with the reason. The
 LLM is only called on click, never on page load. A failure shows the server's
 error message and leaves the catalog and weather panel unaffected.
