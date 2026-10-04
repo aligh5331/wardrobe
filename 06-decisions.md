@@ -2,6 +2,17 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## "Removable layer" guidance follows the outerwear rule (fixed directly, no ticket)
+
+The advisor guidance said "wide temperature range or unknown temperature:
+prefer a removable layer (outerwear, or a sweater over a shirt)". On a day
+whose outerwear rule is `excluded`, that pointed the LLM at outerwear the
+output contract forbids. The two weather lines in
+`internal/recommend/advisor_prompt.md` now say outerwear only when it is not
+excluded, otherwise a `sweater` over a `shirt` or `t-shirt`. Prompt text
+only; no contract, config or validation change. A follow-up from ING-060,
+too small for a ticket, done directly by Ali's call.
+
 ## Structured logging: stdlib `log/slog`, local stderr + file, env-configurable level/format
 
 The backend's logging was ad hoc: stdlib `log.Printf`/`log.Fatalf` in two

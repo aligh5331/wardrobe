@@ -61,8 +61,10 @@ Weather:
   `boots` or `sneakers`. The outer layer should protect: a `coat` or `jacket`,
   not a `blazer` or `vest` on its own.
 - Wide range between min and max: prefer an outfit with a layer that can come
-  off (outerwear, or a `sweater` over a `shirt` or `t-shirt`).
-- Temperature unknown: prefer outfits with a removable layer.
+  off: outerwear when outerwear is not excluded, otherwise a `sweater` over a
+  `shirt` or `t-shirt`.
+- Temperature unknown: prefer outfits with a removable layer, following the same
+  outerwear rule.
 
 Variety across the 3 outfits:
 - Make the 3 outfits feel different: for example one safe neutral outfit, one
