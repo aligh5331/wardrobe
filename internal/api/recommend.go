@@ -33,9 +33,11 @@ var outfitCategoryOrder = map[string]int{
 }
 
 type recommendRequest struct {
-	Formality     string `json:"formality"`
-	Note          string `json:"note"`
-	IgnoreWeather bool   `json:"ignore_weather"`
+	Formality string `json:"formality"`
+	Note      string `json:"note"`
+	// IgnoreWeather is raw so that null is rejected: decoding null into a
+	// bool is a silent no-op, and the spec makes any non-boolean a 400.
+	IgnoreWeather json.RawMessage `json:"ignore_weather"`
 }
 
 type outfitResponse struct {
@@ -72,6 +74,13 @@ func postRecommendations(st *store.Store, w *weather.Client, p *recommend.Picker
 				strings.Join(tagging.TaxonomyTables().Formality, ", ")})
 			return
 		}
+		var ignoreWeather bool
+		if body.IgnoreWeather != nil {
+			if string(body.IgnoreWeather) == "null" || json.Unmarshal(body.IgnoreWeather, &ignoreWeather) != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid ignore_weather: must be true or false"})
+				return
+			}
+		}
 		note := strings.TrimSpace(body.Note)
 		if utf8.RuneCountInString(note) > maxNoteRunes {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "note must be at most 500 characters"})
@@ -90,7 +99,7 @@ func postRecommendations(st *store.Store, w *weather.Client, p *recommend.Picker
 			return
 		}
 		rules := recommend.RulesFor(wr.Forecast)
-		if body.IgnoreWeather {
+		if ignoreWeather {
 			rules = rules.WithoutWeather()
 		}
 		if msg := recommend.MissingMessage(items, rules, body.Formality, wr.Forecast); msg != "" {

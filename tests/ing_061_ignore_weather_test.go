@@ -108,7 +108,7 @@ func TestING061_IgnoreWeatherFalseIsDefault(t *testing.T) {
 func TestING061_IgnoreWeatherBadValueAndWeatherFailure(t *testing.T) {
 	url, calls, _ := e49Fake(t, e49Answer)
 	e, _ := e49Engine(t, g48Items(), ing043Fake(t, 200, e49Mild).url, &recommend.Picker{URL: url, Timeout: 5 * time.Second})
-	for _, b := range []string{`{"ignore_weather":"yes"}`, `{"ignore_weather":1}`} {
+	for _, b := range []string{`{"ignore_weather":"yes"}`, `{"ignore_weather":1}`, `{"ignore_weather":null}`} {
 		e49Err(t, e49Post(e, strings.NewReader(b)), 400, "ignore_weather")
 	}
 

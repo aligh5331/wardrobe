@@ -44,7 +44,7 @@ func TestMissingMessage(t *testing.T) {
 			it("t", "top", "heavy", "casual"), it("b", "bottom", "heavy", "casual"),
 			it("f", "footwear", "medium", "casual"), it("o", "outerwear", "light", "casual"),
 		}, false, "", true,
-			"cannot build outfits. outerwear (required: feels-like below 10 °C): 1 owned, 1 excluded by warmth. Today allows warmth: medium, heavy (feels-like 3.0 °C, range unknown–6.0 °C)." + hint},
+			"cannot build outfits. outerwear (required on cold days): 1 owned, 1 excluded by warmth. Today allows warmth: medium, heavy (feels-like 3.0 °C, range unknown–6.0 °C)." + hint},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -64,10 +64,8 @@ func TestMissingMessage(t *testing.T) {
 }
 
 func TestWithoutWeather(t *testing.T) {
-	r := RulesFor(fc(fp(25), nil, nil, ip(80))).WithoutWeather()
-	if r.Tiers != nil || r.Outerwear != OuterwearOptional || r.TempUnknown || !r.WeatherIgnored || !r.RainHint {
-		t.Fatalf("WithoutWeather = %+v", r)
-	}
+	// A hot day would drop heavy items and all outerwear.
+	r := RulesFor(fc(fp(25), nil, nil, nil)).WithoutWeather()
 	catalog := []store.Item{it("top-h", "top", "heavy", "formal"), it("out-h", "outerwear", "heavy", "casual")}
 	if got := ids(Filter(catalog, r, "")); !reflect.DeepEqual(got, []string{"top-h", "out-h"}) {
 		t.Errorf("Filter = %v, want every item", got)
@@ -91,5 +89,20 @@ func TestWithoutWeather(t *testing.T) {
 	}
 	if _, plain := buildPrompt(Input{Forecast: fc(fp(25), nil, nil, nil), Rules: RulesFor(fc(fp(25), nil, nil, nil))}); strings.Contains(plain, "Weather rules are off") {
 		t.Error("rules-off line present without ignoring weather")
+	}
+}
+
+// Ignoring weather when no temperature is known: the rules-off line replaces
+// "temperature unknown", and the summary still prints unknown values.
+func TestWithoutWeatherTemperatureUnknown(t *testing.T) {
+	f := fc(nil, nil, nil, nil)
+	_, user := buildPrompt(Input{Forecast: f, Rules: RulesFor(f).WithoutWeather()})
+	for _, want := range []string{"Weather rules are off:", "- feels-like: unknown C\n", "- min: unknown C, max: unknown C\n", "Outerwear: optional."} {
+		if !strings.Contains(user, want) {
+			t.Errorf("prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(user, "temperature unknown") {
+		t.Errorf("prompt has the temperature-unknown line:\n%s", user)
 	}
 }

@@ -41,7 +41,9 @@ func MissingMessage(items []store.Item, r Rules, formality string, f weather.For
 		}
 		name := slot
 		if slot == "outerwear" {
-			name = fmt.Sprintf("outerwear (required: feels-like below %g °C)", coldBelowC)
+			// "cold days", not a feels-like number: the band may come from
+			// the min/max fallback when feels-like is null.
+			name = "outerwear (required on cold days)"
 		}
 		if owned == 0 {
 			clauses = append(clauses, name+": none in catalog")
