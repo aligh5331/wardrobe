@@ -78,7 +78,7 @@ func TestBuildPrompt(t *testing.T) {
 		}
 	}
 	for _, s := range []string{"feels-like: 4.5", "min: 2.0", "max: 9.0", "rain chance: 70%",
-		"weather code (WMO): 61", "Formality: smart-casual", "Note: dinner with friends"} {
+		"condition: rain (WMO 61)", "rain likely today: no", "Formality: smart-casual", "Note: dinner with friends"} {
 		if !strings.Contains(user, s) {
 			t.Errorf("user prompt lacks %q", s)
 		}
