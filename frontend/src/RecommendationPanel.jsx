@@ -26,6 +26,8 @@ export default function RecommendationPanel() {
   const [formalities, setFormalities] = useState([])
   const [formality, setFormality] = useState('')
   const [note, setNote] = useState('')
+  // Per request only, never saved (ING-061).
+  const [ignoreWeather, setIgnoreWeather] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [outfits, setOutfits] = useState([])
@@ -57,6 +59,7 @@ export default function RecommendationPanel() {
     const body = {}
     if (formality) body.formality = formality
     if (note.trim()) body.note = note.trim()
+    if (ignoreWeather) body.ignore_weather = true
 
     // ponytail: no AbortController. The server can take up to two 120 s LLM
     // calls, so the browser waits as long as the server does.
@@ -139,6 +142,16 @@ export default function RecommendationPanel() {
             </span>
           </div>
         </div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-stone-700 select-none sm:h-10">
+          <input
+            id="rec-ignore-weather"
+            type="checkbox"
+            checked={ignoreWeather}
+            onChange={(event) => setIgnoreWeather(event.target.checked)}
+            className="size-4 rounded border-stone-300 accent-stone-900"
+          />
+          Ignore weather
+        </label>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <label htmlFor="rec-note" className={labelClass}>
             Note

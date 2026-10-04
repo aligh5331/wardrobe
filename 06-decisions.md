@@ -182,6 +182,24 @@ These numbers are deliberately simple defaults, kept as named constants in one
 place. Ali will tune them from real use; changing them is a spec edit to this
 entry, not a new env var.
 
+## Ignoring weather: a per-request opt-out of the weather rules
+
+The thresholds are deliberately simple and can leave a slot empty on a real
+day (for example a hot day when every owned bottom is `medium`).
+`POST /api/recommendations` takes an optional `ignore_weather` boolean. When
+`true`, the weather rules are off for that request: no warmth filter on any
+category and outerwear optional, the same filtering as the "temperature
+unknown" fallback. Weather is still fetched (a failure is still `502`) and
+still given to the LLM, with a line saying the rules are off so it picks the
+best fit. The prompt does not claim the temperature is unknown.
+
+Per request, not saved: it is an override for one click, not a preference. A
+saved setting would need a schema change.
+
+Rejected: turning off only the warmth filter and keeping the outerwear rule
+(two half-states to explain); continuing without weather when Open-Meteo fails
+(changes the response shape; a separate idea).
+
 ## Recommender output validation: retry once, then 502
 
 The LLM's JSON is untrusted, same as VLM tagging output. Every outfit must:
@@ -191,7 +209,8 @@ no duplicate ids within the outfit; and the 3 outfits must not be identical
 sets. Invalid or unparseable output is retried **once** (same prompt, nonzero
 temperature, as in the VLM policy); a second failure is `502`. An unreachable
 LLM is `502` immediately with no retry. If the candidates cannot fill a
-required slot, respond `422` naming the slot **without** calling the LLM.
+required slot, respond `422` naming the slot and why it is empty
+(`07-architecture.md` step 3) **without** calling the LLM.
 
 ## LLM config: `LLM_URL` required by the server only; optional `LLM_MODEL`; fixed 120 s timeout
 

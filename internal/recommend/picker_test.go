@@ -78,7 +78,7 @@ func TestBuildPrompt(t *testing.T) {
 		}
 	}
 	for _, s := range []string{"feels-like: 4.5", "min: 2.0", "max: 9.0", "rain chance: 70%",
-		"weather code (WMO): 61", "Formality: smart-casual", "Note: dinner with friends"} {
+		"condition: rain (WMO 61)", "rain likely today: no", "Formality: smart-casual", "Note: dinner with friends"} {
 		if !strings.Contains(user, s) {
 			t.Errorf("user prompt lacks %q", s)
 		}
@@ -280,6 +280,41 @@ func TestPickRetry(t *testing.T) {
 				t.Errorf("second outfit = %+v, not the valid answer", got[1])
 			}
 		})
+	}
+}
+
+// A reasoning model that spends the whole budget thinking returns an empty
+// content with finish_reason "length" (seen with deepseek-flash at 1024).
+// The error must say the output was cut off, not just "unparseable JSON".
+func TestPickTruncatedByMaxTokens(t *testing.T) {
+	var maxTok any
+	srv, calls := serve(t, func(n int, w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		maxTok = body["max_tokens"]
+		w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"","reasoning_content":"We need..."},"finish_reason":"length"}]}`))
+	})
+	p := Picker{URL: srv.URL, Timeout: 5 * time.Second}
+	_, err := p.Pick(context.Background(), pickIn())
+	if !errors.Is(err, ErrLLM) || !strings.Contains(err.Error(), "cut off at max_tokens=8192") {
+		t.Errorf("err = %v, want ErrLLM naming the max_tokens cut-off", err)
+	}
+	if calls.Load() != 2 {
+		t.Errorf("got %d calls, want 2 (invalid output still retries once)", calls.Load())
+	}
+	if maxTok != float64(8192) {
+		t.Errorf("max_tokens = %v, want 8192", maxTok)
+	}
+
+	// A complete answer that happens to end with finish_reason "length" is
+	// still accepted: validation decides, not the flag.
+	srv2, _ := serve(t, func(n int, w http.ResponseWriter, r *http.Request) {
+		body, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{
+			"message": map[string]any{"content": good}, "finish_reason": "length"}}})
+		w.Write(body)
+	})
+	if _, err := (&Picker{URL: srv2.URL, Timeout: 5 * time.Second}).Pick(context.Background(), pickIn()); err != nil {
+		t.Errorf("valid answer with finish_reason length: %v", err)
 	}
 }
 

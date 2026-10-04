@@ -8,6 +8,7 @@ package recommend
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,7 +31,10 @@ var ErrLLM = errors.New("llm failure")
 const (
 	// llmTimeout is the fixed request timeout (06-decisions.md "LLM config").
 	llmTimeout = 120 * time.Second
-	maxTokens  = 1024
+	// maxTokens leaves room for reasoning models, whose hidden reasoning
+	// counts against it before any answer is written. 1024 was used up by
+	// reasoning alone on deepseek-flash.
+	maxTokens = 8192
 )
 
 // errBadOutput marks a 200 response whose body is unusable. Unlike transport
@@ -62,7 +66,10 @@ type Outfit struct {
 	Reason  string
 }
 
-const systemPrompt = `You pick outfits for one person from a list of clothing items.
+// contractPrompt is the output contract the validator enforces. Styling
+// guidance lives in advisor_prompt.md (docs/adr/0001), so a style edit cannot
+// change the contract.
+const contractPrompt = `You pick outfits for one person from a list of clothing items.
 Respond with ONLY a JSON object, no other text, in exactly this shape:
 
 {"outfits":[{"item_ids":["<id>","..."],"reason":"<one sentence>"}]}
@@ -72,10 +79,52 @@ Rules:
 - Every outfit has exactly one top, one bottom and one footwear item.
 - Follow the outerwear rule in the request: required means exactly one outerwear item, excluded means none, optional means at most one.
 - An outfit has at most one outerwear item and at most one headwear item. Accessories are optional.
-- Use only ids from the item list. Never repeat an id inside an outfit.
-- Coordinate colors: pair neutrals with one accent, avoid clashing colors and too many patterns.
-- Read the note and let it guide the choice.
-- Each reason is one short sentence.`
+- Use only ids from the item list. Never repeat an id inside an outfit.`
+
+// advisorPrompt is the soft styling guidance (ING-060). It is never validated.
+//
+//go:embed advisor_prompt.md
+var advisorPrompt string
+
+// systemPrompt is the contract followed by the advisor guidance.
+var systemPrompt = contractPrompt + "\n\n" + strings.TrimSpace(advisorPrompt)
+
+// wmoLabels labels WMO weather codes in words, matching the frontend's table
+// (frontend/src/WeatherPanel.jsx WMO_LABELS), lowercased.
+var wmoLabels = map[int]string{
+	0: "clear", 1: "mainly clear", 2: "partly cloudy", 3: "cloudy",
+	45: "fog", 48: "fog",
+	51: "drizzle", 53: "drizzle", 55: "drizzle", 56: "drizzle", 57: "drizzle",
+	61: "rain", 63: "rain", 65: "rain", 66: "rain", 67: "rain",
+	71: "snow", 73: "snow", 75: "snow", 77: "snow",
+	80: "showers", 81: "showers", 82: "showers",
+	85: "snow showers", 86: "snow showers",
+	95: "thunderstorm", 96: "thunderstorm", 99: "thunderstorm",
+}
+
+// conditionLine is the weather condition in words, with its WMO code.
+func conditionLine(code *int) string {
+	if code == nil {
+		return "- condition: unknown\n"
+	}
+	label, ok := wmoLabels[*code]
+	if !ok {
+		label = "unknown"
+	}
+	return fmt.Sprintf("- condition: %s (WMO %d)\n", label, *code)
+}
+
+// rainLine states the rain hint (06-decisions.md "Weather → warmth
+// thresholds"): yes at 50% or more, no below, unknown without a chance.
+func rainLine(f weather.Forecast, r Rules) string {
+	switch {
+	case f.Today.PrecipitationProbabilityMax == nil:
+		return "- rain likely today: unknown\n"
+	case r.RainHint:
+		return "- rain likely today: yes\n"
+	}
+	return "- rain likely today: no\n"
+}
 
 // Pick asks the LLM for 3 outfits. Every error satisfies errors.Is(err, ErrLLM).
 //
@@ -106,6 +155,9 @@ func (p *Picker) Pick(ctx context.Context, in Input) ([]Outfit, error) {
 				att.log(ctx, n, nil)
 				return outfits, nil
 			}
+			if att.truncated {
+				err = fmt.Errorf("output cut off at max_tokens=%d before the answer was complete: %w", maxTokens, err)
+			}
 			att.outcome = "invalid_output"
 		}
 		att.log(ctx, n, err)
@@ -124,6 +176,8 @@ type attempt struct {
 	body    []byte
 	elapsed time.Duration
 	outcome string
+	// truncated: the choice's finish_reason was "length".
+	truncated bool
 }
 
 // log writes the one "llm attempt" record for this attempt to the context's
@@ -176,6 +230,7 @@ type chatResponse struct {
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 }
 
@@ -240,6 +295,7 @@ func (p *Picker) call(ctx context.Context, client *http.Client, system, user str
 		return "", att, fmt.Errorf("%w: response had no choices", errBadOutput)
 	}
 	att.outcome = ""
+	att.truncated = cr.Choices[0].FinishReason == "length"
 	return cr.Choices[0].Message.Content, att, nil
 }
 
@@ -267,7 +323,11 @@ func buildPrompt(in Input) (system, user string) {
 	fmt.Fprintf(&b, "- min: %s C, max: %s C\n",
 		orUnknown(f.Today.TemperatureMinC, "%.1f"), orUnknown(f.Today.TemperatureMaxC, "%.1f"))
 	fmt.Fprintf(&b, "- rain chance: %s%%\n", orUnknown(f.Today.PrecipitationProbabilityMax, "%d"))
-	fmt.Fprintf(&b, "- weather code (WMO): %s\n", orUnknown(f.Today.WeatherCode, "%d"))
+	b.WriteString(rainLine(f, in.Rules))
+	b.WriteString(conditionLine(f.Today.WeatherCode))
+	if in.Rules.WeatherIgnored {
+		b.WriteString("Weather rules are off: candidates were not filtered by warmth, so some may be too warm or too cool. Prefer the best fit for this weather.\n")
+	}
 
 	switch in.Rules.Outerwear {
 	case OuterwearRequired:

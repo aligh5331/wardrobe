@@ -185,11 +185,12 @@ describe('App grid page (ING-020 behavior, rendered DOM)', () => {
       expect(options).toBeUndefined()
     }
     // The edit entry point exists, but no write form is rendered yet. ING-050
-    // added the recommendation panel's formality select and note input on load.
+    // added the recommendation panel's formality select and note input on load;
+    // ING-061 added the "Ignore weather" checkbox.
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
     expect(container.querySelectorAll('form, textarea')).toHaveLength(0)
     expect(
       [...container.querySelectorAll('input, select')].map((el) => el.id),
-    ).toEqual(['rec-formality', 'rec-note'])
+    ).toEqual(['rec-formality', 'rec-ignore-weather', 'rec-note'])
   })
 })
