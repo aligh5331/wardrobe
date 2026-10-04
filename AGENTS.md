@@ -9,7 +9,9 @@ responsibilities, permissions, inputs/outputs, and definitions of done live in
 
 ## 1. Project context
 
-This project is currently in **Phase 3: the outfit recommender**.
+This project is **between phases**: Phase 3 (the outfit recommender) is
+closed, and Phase 4 (the outfit log, `06-decisions.md`) is being specified.
+Nothing in Phase 4 is ticketable yet; the Phase 3 rules below still hold.
 
 Phase 1 (the local wardrobe catalog) and Phase 2 (weather from Open-Meteo for
 one location chosen in the web UI) are done. Phase 3 filters the catalog by

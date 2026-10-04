@@ -2,6 +2,21 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Phase 3 closed; Phase 4 = outfit log (2026-10-04)
+
+Phase 3 (ING-046..ING-061) is done: the recommender, advisor guidance, the
+"Ignore weather" option, the eval, and outbound attempt logging. The ING-060
+follow-ups are settled: the removable-layer fix landed directly, a hosted LLM
+is allowed by the owner's choice, `LLM_MAX_TOKENS` was declined, and a shorter
+guidance file for small local models was dropped (no default local text model
+is mandated).
+
+Phase 4 is the outfit log and feedback loop from `later-ideas.md`: record what
+was actually worn and how it worked. Chosen over outfit image generation,
+which is blocked on a GPU/VRAM budget and works best once a log exists. Its
+scope, schema and API are not specified yet; until they are, nothing in
+Phase 4 is ticketable.
+
 ## Recommender LLM may be hosted, by the owner's choice (2026-10-04)
 
 `LLM_URL` may point at a hosted OpenAI-compatible endpoint. Local stays the

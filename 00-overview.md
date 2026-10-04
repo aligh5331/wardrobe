@@ -10,7 +10,7 @@ A fully local personal wardrobe system, built in three layers:
 3. **Recommender** — picks weather-appropriate, color-coordinated outfits from the catalog
 
 ## Current phase
-**Phase 3: the outfit recommender.** Phase 1 (catalog) and Phase 2 (weather signal) are built and done. Phase 3 adds Layer 3: on request, the backend filters the catalog by today's weather and an optional formality, and the local text LLM (`LLM_URL`) picks three color-coordinated outfits from those candidates (`07-architecture.md` "Recommender"). Outfit log, ratings, embeddings, and outfit image generation stay parked in `later-ideas.md`.
+**Between phases: Phase 3 closed, Phase 4 (the outfit log) being specified.** Nothing in Phase 4 is ticketable until its scope is in `06-decisions.md` and the specs. Phase 1 (catalog), Phase 2 (weather signal) and Phase 3 are built and done. Phase 3 added Layer 3: on request, the backend filters the catalog by today's weather and an optional formality, and the local text LLM (`LLM_URL`) picks three color-coordinated outfits from those candidates (`07-architecture.md` "Recommender"). Embeddings and outfit image generation stay parked in `later-ideas.md`.
 
 ## Roles
 - **Ali (human, orchestrator)** — captures garment photos, makes judgment calls on ambiguous items, reviews all agent output, owns infra/tooling decisions. Not writing implementation code directly.
