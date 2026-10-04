@@ -2,6 +2,34 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Distribution: Apache-2.0, `v0.x` tags, GitHub release binaries and a GHCR image (2026-10-04)
+
+The app is usable, so it is released. Packaging only; no app behavior
+changes. Done directly by Claude on Ali's call, no ticket.
+
+- **License:** Apache-2.0 (explicit patent grant; same license as Qwen3-VL).
+- **Versions:** `v0.x`. Later versions add features and may change behavior;
+  the catalog carries forward through GORM `AutoMigrate`. The phase number
+  maps to the minor version (Phase 4 ships as `v0.2.0`). `frontend/package.json`
+  carries the same version.
+- **Release mechanics:** pushing a `v*` tag runs `.github/workflows/release.yml`:
+  frontend and Go tests, then binaries (`wardrobe` + `ingest`, UI embedded) for
+  linux/darwin amd64+arm64 and windows amd64 attached to a GitHub release, and
+  a `linux/amd64` + `linux/arm64` image pushed to `ghcr.io/aligh5331/wardrobe`
+  (version tag and `latest`). `go install` is not a supported install path:
+  it would embed the "Frontend not built" placeholder.
+- **Image:** multi-stage `Dockerfile`, runtime `distroless/static` as
+  non-root (uid 65532), with CA certificates for Open-Meteo. `data/` and
+  `logs/` are volumes; `.dockerignore` keeps `data/`, `logs/` and `.env` out
+  of the build context.
+- **Compose:** `docker-compose.yml` runs the server only, publishes on
+  `127.0.0.1:8080` because the app has no login, and maps
+  `host.docker.internal` so model servers on the host are reachable. Model
+  servers are not containerized here.
+- **Contributions:** issues welcome; pull requests not expected, since work
+  goes through the spec → ticket → agent process. The process files stay in
+  the public repo.
+
 ## Phase 3 closed; Phase 4 = outfit log (2026-10-04)
 
 Phase 3 (ING-046..ING-061) is done: the recommender, advisor guidance, the

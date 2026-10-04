@@ -1,0 +1,17 @@
+# Runs the wardrobe server only. The VLM and LLM servers are yours to run;
+# point VLM_URL/LLM_URL in .env at them. For a server on this machine, use
+# http://host.docker.internal:<port>, not localhost.
+services:
+  wardrobe:
+    image: ghcr.io/aligh5331/wardrobe:latest
+    build: .
+    env_file: .env
+    ports:
+      # The app has no login: reachable from this machine only.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

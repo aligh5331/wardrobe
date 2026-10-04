@@ -1,0 +1,21 @@
+# Personal data and secrets never enter the image.
+data/
+logs/
+temp/
+.env
+.env.*
+
+# Build output and tooling the image builds or does not need.
+frontend/node_modules/
+frontend/dist/
+.git/
+.github/
+.idea/
+.vscode/
+.claude/
+.agents/
+.opencode/
+/wardrobe
+/server
+/ingest
+*.exe

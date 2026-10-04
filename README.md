@@ -12,9 +12,12 @@ language model pick three color-coordinated outfits from your catalog.
   an optional formality, each with a one-line reason.
 
 Everything runs locally. Your photos and catalog stay in a SQLite file and a
-folder on your disk, and all inference goes to model servers you run yourself.
-The only outside service is [Open-Meteo](https://open-meteo.com/) for weather,
-which needs no API key and is called from the backend only.
+folder on your disk, and photo tagging goes to a model server you run
+yourself. The outfit-picking LLM is local by default; you can point `LLM_URL`
+at a hosted endpoint instead, which then receives the weather, your note and
+the candidate garments' tags (never photos or your location). The only other
+outside service is [Open-Meteo](https://open-meteo.com/) for weather, which
+needs no API key and is called from the backend only.
 
 ---
 
@@ -22,6 +25,8 @@ which needs no API key and is called from the backend only.
 
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
+- [Install a release](#install-a-release)
+- [Run with Docker](#run-with-docker)
 - [Quick start](#quick-start)
 - [Setting up the models](#setting-up-the-models)
 - [Using the app](#using-the-app)
@@ -33,6 +38,7 @@ which needs no API key and is called from the backend only.
 - [Development](#development)
 - [Project layout](#project-layout)
 - [Specs and contributing](#specs-and-contributing)
+- [License](#license)
 
 ---
 
@@ -79,7 +85,60 @@ The app runs on Linux, macOS, and Windows.
 
 ---
 
+## Install a release
+
+Prebuilt archives for Linux, macOS and Windows are on the
+[Releases page](https://github.com/aligh5331/wardrobe/releases). Each one
+holds the `wardrobe` server, the `ingest` CLI, this README, the license and
+`.env.example`. The UI is already built in; you need neither Go nor Node.
+
+1. Download and unpack the archive for your system.
+2. In the unpacked folder, copy `.env.example` to `.env` and set `VLM_URL` and
+   `LLM_URL` ([Setting up the models](#setting-up-the-models)).
+3. Run `./wardrobe` (Windows: `.\wardrobe.exe`) from that folder and open
+   **http://localhost:8080**.
+
+`data/` and `logs/` are created next to the binary's working directory. The
+binaries are unsigned: on macOS, clear the quarantine flag once with
+`xattr -d com.apple.quarantine wardrobe ingest`.
+
+Releases use `v0.x` versions: later versions add features and may change how
+things work. Your catalog carries forward; the database schema migrates
+itself on startup.
+
+---
+
+## Run with Docker
+
+Images for `linux/amd64` and `linux/arm64` are published to
+`ghcr.io/aligh5331/wardrobe` (tags `latest` and each version, such as
+`0.1.0`). The image runs the server only; your VLM and LLM servers run
+outside it.
+
+```bash
+git clone https://github.com/aligh5331/wardrobe.git
+cd wardrobe
+cp .env.example .env    # set VLM_URL and LLM_URL
+docker compose up -d
+```
+
+Open **http://localhost:8080**.
+
+- **Model servers on the same machine:** inside the container, `localhost` is
+  the container. Use `http://host.docker.internal:<port>` in `.env`.
+- **Port:** `docker-compose.yml` publishes on `127.0.0.1` only, because the
+  app has no login. Change it only if you know who can reach the port.
+- **Data:** `./data` and `./logs` are mounted into the container. The
+  container runs as a non-root user (uid 65532). On Linux, if it cannot write
+  them, run `sudo chown -R 65532:65532 data logs` once.
+- **Bulk import:** put photos under `./data`, then
+  `docker compose run --rm --entrypoint ingest wardrobe /app/data/<photo>`.
+
+---
+
 ## Quick start
+
+Build from source. You need Go and Node (see [Requirements](#requirements)).
 
 ```bash
 # 1. Clone
@@ -478,10 +537,20 @@ ticket backlog. If you plan to change code, read these first:
 Ground rules:
 
 - **Stay local.** No cloud inference, hosted model APIs, or fine-tuning.
-  Open-Meteo is the only allowed external service.
+  Two scoped exceptions: Open-Meteo for weather, and a hosted `LLM_URL` when
+  the owner chooses one (`06-decisions.md`).
 - **Don't invent tag values.** Changes to the taxonomy go through
   `03-taxonomy.md` and its dependent specs together.
 - **Keep personal data out of git**: `data/`, `logs/`, `.env`, and real
   photos.
 - Work happens on `sprint/<slug>` branches, one ticket per commit where
   practical. See `02-agile-process.md`.
+
+Issues are welcome. Pull requests are not expected: changes go through the
+spec → ticket → agent process above.
+
+---
+
+## License
+
+[Apache License 2.0](LICENSE).
