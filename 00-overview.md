@@ -18,7 +18,7 @@ A fully local personal wardrobe system, built in three layers:
 - **Coding agents** (run via Ali's own agent harness / Claude Code, outside this project) — execute backlog tickets against the specs produced here. See `01-agentic-workflow.md` for the agent roles and `agents/*.md` for each role's definition.
 
 ## Hard constraints (do not relitigate — see `06-decisions.md` for the full log)
-- Fully local. No cloud services, no hosted inference APIs, nothing trained in the cloud. Single scoped exception: weather data from Open-Meteo (`06-decisions.md`).
+- Fully local. No cloud services, no hosted inference APIs, nothing trained in the cloud. Two scoped exceptions (`06-decisions.md`): weather data from Open-Meteo, and the recommender LLM, which may be a hosted endpoint by the owner's choice of `LLM_URL`.
 - No model fine-tuning. Use a base local VLM (Qwen3-VL-8B) with constrained prompting against `03-taxonomy.md`, and a base local text LLM for recommendations.
 - One photo per garment (flat lay/hanger) — not outfit photos on a person.
 

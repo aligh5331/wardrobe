@@ -104,6 +104,9 @@ temperature, condition, and today's min/max and precipitation chance, with a
 ### Recommender (Phase 3)
 
 Rule filter + local text LLM (`06-decisions.md` "Recommender approach").
+`LLM_URL` may instead point at a hosted endpoint by the owner's choice; what
+it receives is listed in `06-decisions.md` "Recommender LLM may be hosted, by
+the owner's choice".
 Code lives in `internal/recommend`; the LLM client talks to `LLM_URL`'s
 OpenAI-compatible `/v1/chat/completions`, like the VLM client.
 

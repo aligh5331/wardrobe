@@ -2,6 +2,33 @@
 
 Newest first. Each entry: decision, date-ish context, why.
 
+## Recommender LLM may be hosted, by the owner's choice (2026-10-04)
+
+`LLM_URL` may point at a hosted OpenAI-compatible endpoint. Local stays the
+default the project is built and documented for; hosted is the owner's
+opt-in, made by setting `LLM_URL`. No flag, no startup check, no warning.
+
+What a hosted endpoint receives per recommendation: the weather summary
+(feels-like, min/max, rain chance, condition), the formality, the free-text
+note, and each candidate's id and tags. Never photos, catalog `notes`,
+location name or coordinates, or anything from `.env` except `LLM_API_KEY`
+as the auth header.
+
+Why: the ING-059/060 evals showed hosted models picking clearly better
+outfits (DeepSeek 4.1 flash 4.08, Sonnet 5.5 4.25 average score) than the
+local Qwen3-VL run (2.75), and Ali already runs a hosted endpoint. The data
+sent is tags and weather, not photos or location. No default local text model
+is evaluated or mandated; the evals were for data, not for picking a default.
+
+Scope: the recommender LLM only. VLM tagging and the catalog store stay fully
+local. This is the second scoped exception to "fully local", after the
+weather signal. Hosted telemetry, logging and error services stay ruled out.
+
+Not done: `LLM_MAX_TOKENS`. The fixed `max_tokens=8192` is a large output
+budget; 2 of 12 advisor-v1 runs hit it through model reasoning. Truncation is
+already named in the error and logged per attempt (ING-055). Revisit only if
+it shows up often in `logs/app.log`.
+
 ## "Removable layer" guidance follows the outerwear rule (fixed directly, no ticket)
 
 The advisor guidance said "wide temperature range or unknown temperature:
@@ -624,7 +651,8 @@ local source by nature, so Layer 2 (`00-overview.md` Vision) will call
 an external weather API when it's built. This is a scoped, single
 exception, not a loosening of the constraint elsewhere — VLM inference,
 the LLM recommender, and the catalog store stay fully local regardless
-of distribution model.
+of distribution model. (Superseded for the LLM recommender only by
+"Recommender LLM may be hosted, by the owner's choice".)
 
 ## `LLM_URL`/`LLM_API_KEY` provisioned ahead of use
 Phase 1 ingestion only calls `VLM_URL` (image tagging). `LLM_URL`/
@@ -713,7 +741,8 @@ Closes the open question that was in `04-data-schema.md`.
 
 ## Fully local, no cloud hosting
 The whole system (model inference, catalog store, UI) runs on Ali's own
-hardware. No cloud services involved at any layer.
+hardware. No cloud services involved at any layer. (Later scoped exceptions:
+the weather signal, and the recommender LLM by the owner's choice.)
 
 ## No model fine-tuning
 A base VLM with constrained, taxonomy-anchored prompting covers the

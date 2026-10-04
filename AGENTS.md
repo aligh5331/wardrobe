@@ -21,7 +21,9 @@ The following constraints are architectural decisions, not suggestions:
 
 - Inference and catalog data remain local. Do not introduce cloud inference,
   hosted model APIs, or cloud training. Open-Meteo, called from the backend
-  only, is the single allowed external service (`06-decisions.md`).
+  only, is an allowed external service. The recommender's `LLM_URL` may point
+  at a hosted endpoint by the owner's choice; agents do not widen what it is
+  sent (`06-decisions.md`).
 - Do not introduce model fine-tuning. Tagging uses the local Qwen3-VL-8B
   model with constrained prompting; recommendations use a base local text LLM.
 - Input is one garment per photo, as a flat lay or hanger photo. Outfit-photo

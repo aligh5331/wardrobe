@@ -79,12 +79,20 @@ e.g. `cold-rain`, `hot-sunny`.
 guidance violation in eval output. Reported, never a test failure.
 
 **Eval form**: the Markdown file an eval run writes to
-`tests/evals/recommender/`, which Ali fills in (score 1–5, would wear y/n,
-note, variety per scenario).
+`tests/evals/recommender/`, rated with a score 1–5, would wear y/n and a
+note per outfit, and a variety score per scenario. Every form records who
+rated it.
+
+**Human-rated form**: an eval form Ali rated. Only a human-rated form can
+be a baseline.
+
+**Provisional form**: an eval form rated by a model (for example Claude
+reading the tags). Useful for a quick comparison, never a baseline.
+_Avoid_: calling a provisional form a "baseline".
 
 **Prompt fingerprint**: a short hash of the exact prompt messages the eval
 sent. It tells forms from different prompts (or wardrobes, or scenarios)
 apart.
 
-**Baseline**: the eval form from the prompt before a change; the reference a
-later form is compared against.
+**Baseline**: the human-rated eval form from the prompt before a change; the
+reference a later form is compared against.

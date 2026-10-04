@@ -79,5 +79,6 @@ Style rulings, where advice disagrees:
 - The system prompt grows from about 10 lines to about 60–100.
 - Guidance can still be ignored. ADR 0002's eval measures how often.
 - The recommender sends tags, weather and the note to whatever `LLM_URL`
-  points at. Ali currently uses a hosted endpoint, which `06-decisions.md`
-  "Fully local" does not yet record.
+  points at. A hosted endpoint is allowed by the owner's choice
+  (`06-decisions.md` "Recommender LLM may be hosted, by the owner's choice",
+  2026-10-04).
