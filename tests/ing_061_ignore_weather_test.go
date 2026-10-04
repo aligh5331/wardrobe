@@ -73,6 +73,38 @@ func TestING061_IgnoreWeather(t *testing.T) {
 	}
 }
 
+// G1: on a cold day ignoring weather makes outerwear optional, so a catalog
+// with no outerwear still gets outfits, and an answer without outerwear is
+// accepted.
+func TestING061_IgnoreWeatherColdDayOuterwearOptional(t *testing.T) {
+	answer := g48Raw(g48O("a", "t1", "b1", "f1"), g48O("b", "t2", "b2", "f2"), g48O("c", "t1", "b2", "f1"))
+	url, calls, body := e49Fake(t, answer)
+	e, _ := e49Engine(t, e49Items(nil, "o1", "o2"), ing043Fake(t, 200, e49Cold).url, &recommend.Picker{URL: url, Timeout: 5 * time.Second})
+
+	e49Err(t, e49Post(e, strings.NewReader(`{}`)), 422, "outerwear (required")
+	e49Calls(t, calls, 0)
+
+	rr := e49Post(e, strings.NewReader(`{"ignore_weather":true}`))
+	if rr.Code != 200 {
+		t.Fatalf("status = %d, body %s", rr.Code, rr.Body)
+	}
+	e49Calls(t, calls, 1)
+	if p := e49Prompt(t, body); !strings.Contains(p, "Outerwear: optional.") {
+		t.Errorf("prompt does not make outerwear optional:\n%s", p)
+	}
+}
+
+// G2: an explicit false is the same as leaving the field out.
+func TestING061_IgnoreWeatherFalseIsDefault(t *testing.T) {
+	url, calls, _ := e49Fake(t, e49Answer)
+	e, _ := e49Engine(t, e61Items("heavy"), ing043Fake(t, 200, e61Hot).url, &recommend.Picker{URL: url, Timeout: 5 * time.Second})
+	absent := e49Err(t, e49Post(e, strings.NewReader(`{}`)), 422, "excluded by warmth")
+	if explicit := e49Err(t, e49Post(e, strings.NewReader(`{"ignore_weather":false}`)), 422, "excluded by warmth"); explicit != absent {
+		t.Errorf("ignore_weather:false error = %q\nwant same as absent: %q", explicit, absent)
+	}
+	e49Calls(t, calls, 0)
+}
+
 func TestING061_IgnoreWeatherBadValueAndWeatherFailure(t *testing.T) {
 	url, calls, _ := e49Fake(t, e49Answer)
 	e, _ := e49Engine(t, g48Items(), ing043Fake(t, 200, e49Mild).url, &recommend.Picker{URL: url, Timeout: 5 * time.Second})
