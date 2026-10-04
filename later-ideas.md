@@ -118,6 +118,30 @@ later.
   highly-rated past `outfit_worn` records as few-shot examples for the
   Phase 3 LLM, once both this log and embeddings exist.
 
+### Chosen as Phase 4 (2026-10-04): open decisions
+
+Picked as the next phase (`06-decisions.md` "Phase 3 closed; Phase 4 =
+outfit log"). Scope is not specified yet. These questions are open, each
+with the recommendation from the 2026-10-04 design session; Ali has not
+decided any of them:
+
+1. **How a wear is logged:** "I wore this" on a recommended outfit, a manual
+   pick from the catalog grid, or both. Recommended: both, the button first,
+   so the history is not biased toward the LLM's picks.
+2. **When the rating happens:** at log time, or log now and rate later.
+   Recommended: log now, rating optional and editable later.
+3. **What the rating is:** recommended a 1–5 rating plus an optional note,
+   no "would wear". Glossary terms **Wear** (one log entry) and **Rating**
+   (its 1–5 value), kept apart from the eval's "score".
+4. **Weather snapshot:** the recommender's weather summary as plain fields
+   (feels-like, min/max, rain chance, condition), raw Open-Meteo JSON, or
+   none. Recommended: the summary fields; no coordinates.
+5. **Feedback into the recommender:** recommended not in Phase 4. Phase 4 is
+   the log plus a stats view (per-item and per-pair wear count and average
+   rating); feeding it back is a later decision once data density is known.
+6. **Items edited after being worn:** recommended that a wear stores item ids
+   only and stats use the items' current tags (a tag edit is a correction).
+
 ---
 
 ## Garment embeddings for visual similarity / compatibility
