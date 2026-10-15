@@ -309,3 +309,71 @@ not current scope.
   than an incremental feature, and deserves its own spec pass (probably
   its own `0X-multi-tenancy.md`) if/when it's picked up, not a quiet
   retrofit onto the Phase 1 schema.
+
+---
+## Personal color season and body-type styling profile
+
+### Problem
+
+The recommender filters by weather and formality only. It has no notion
+of which colors suit Ali or which silhouettes flatter Ali's build, so it
+can happily pick a technically valid outfit in colors or shapes Ali
+would never choose. Korean-style personal color analysis (seasonal
+types such as "Summer Mute" / "Light Summer", found by draping fabric
+swatches under the face) and body-type analysis (골격진단:
+straight / wave / natural) are established consultation formats that
+encode exactly this kind of preference.
+
+### Idea
+
+Add a small, owner-entered **styling profile** (single user, not
+per-item):
+
+```
+styling_profile: { color_season, preferred_colors[], avoided_colors[],
+                   body_type, notes }
+```
+
+- The season and body type are **entered by Ali**, from a professional
+  analysis or a self-drape, not inferred by any model.
+- Simplest consumer, no new taxonomy: the recommender deprioritizes
+  candidates whose `dominant_color` is in `avoided_colors`, especially
+  for tops (the garment nearest the face), and/or passes the profile to
+  the LLM prompt as a preference.
+- Later, with the outfit log (Phase 4), ratings could confirm or correct
+  the profile ("best vs worst" from actual wear rather than a board).
+
+### Explicitly out of scope for now
+
+- **Inferring the season or body type from a photo/selfie.** Phone
+  white balance and room lighting make this unreliable even for a
+  strong VLM; consultants use controlled light and physical drapes. A
+  model would give confident, wrong answers.
+- Any change to the 16-color palette, the schema, or the recommender
+  without an approved spec.
+
+### Open question worth flagging before building
+
+The 16-value color palette (`03-taxonomy.md`) is likely too coarse for
+seasonal analysis. Seasons hinge on **saturation, lightness and
+undertone** (muted vs clear, cool vs warm), but the enum has a single
+`blue` for both a dusty blue and a cobalt. Doing this properly probably
+needs one of:
+
+- new tone attributes per item (e.g. `color_saturation`,
+  `color_lightness`, `color_undertone`) — a taxonomy + schema + VLM
+  tagging-spec change, coordinated together; or
+- a measured color value per item (hex/LAB sampled from the photo) —
+  a schema change plus a non-VLM extraction step.
+
+Similarly, body-type advice ("baggy on top", "straight-leg denim")
+needs fit/silhouette attributes that don't exist in the taxonomy today.
+Worth testing the profile-only version first to see whether the coarse
+palette is already useful before committing to either.
+
+### Open threads this could eventually feed
+
+- Outfit log and feedback loop (above): ratings as evidence for/against
+  the profile.
+- Garment embeddings (above): visual similarity could capture tone
+  differences the enum flattens, as an alternative to new attributes.
